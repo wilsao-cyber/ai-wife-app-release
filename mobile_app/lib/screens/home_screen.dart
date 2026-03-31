@@ -9,6 +9,7 @@ import '../widgets/vrm_viewer_widget.dart';
 import 'chat_screen.dart';
 import 'email_screen.dart';
 import 'calendar_screen.dart';
+import 'photo_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -122,6 +123,14 @@ class _HomeTabState extends State<_HomeTab> {
                         _QuickAction(icon: Icons.email, label: '查看郵件', onTap: () {}),
                         _QuickAction(icon: Icons.calendar_today, label: '今日行程', onTap: () {}),
                         _QuickAction(icon: Icons.search, label: '搜尋資料', onTap: () {}),
+                        _QuickAction(
+                          icon: Icons.camera_alt,
+                          label: '合照',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const PhotoScreen()),
+                          ),
+                        ),
                         if (_arSupported)
                           _QuickAction(
                             icon: Icons.view_in_ar,
