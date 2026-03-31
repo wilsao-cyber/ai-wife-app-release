@@ -1,0 +1,63 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+
+llm:
+  provider: "ollama"
+  base_url: "http://localhost:11434"
+  model: "qwen2.5:72b"
+  temperature: 0.7
+  max_tokens: 4096
+
+tts:
+  provider: "cosyvoice"
+  model_path: "./models/tts/cosyvoice"
+  voice_sample_path: "./voice_samples"
+  sample_rate: 22050
+
+stt:
+  provider: "whisper"
+  model: "medium"
+  language: "auto"
+
+image_to_3d:
+  provider: "triposr"
+  model_path: "./models/3d/triposr"
+  output_format: "glb"
+
+email:
+  provider: "gmail"
+  credentials_path: "./config/credentials.json"
+  token_path: "./config/token.json"
+  refresh_interval: 300
+
+calendar:
+  provider: "google_calendar"
+  credentials_path: "./config/credentials.json"
+  token_path: "./config/token.json"
+  refresh_interval: 60
+
+web_search:
+  provider: "searxng"
+  base_url: "http://localhost:8080"
+
+opencode:
+  server_url: "http://localhost:4096"
+  auto_start: true
+  timeout: 600
+  allowed_paths:
+    - "./mobile_app"
+    - "./server"
+
+character:
+  default_model_path: "./mobile_app/assets/models"
+  animation_enabled: true
+  vrm_support: true
+
+languages:
+  supported:
+    - "zh-TW"
+    - "ja"
+    - "en"
+  default: "zh-TW"
