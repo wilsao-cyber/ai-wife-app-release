@@ -29,9 +29,9 @@ server/.env
 server/venv/
 *.egg-info/
 
-# Models
-models/
-!models/README.md
+# Models (top-level ML models directory only)
+/models/
+!/models/README.md
 
 # IDE
 .idea/
@@ -44,10 +44,9 @@ models/
 .DS_Store
 Thumbs.db
 
-# Large binary files
-*.glb
-*.gltf
-*.vrm
-*.obj
-*.png
-!scripts/**/*.py
+# Large binary files (top-level output only)
+/output/**/*.glb
+/output/**/*.gltf
+/output/**/*.vrm
+/output/**/*.obj
+*.egg-info/
