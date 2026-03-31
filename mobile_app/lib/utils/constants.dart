@@ -1,6 +1,6 @@
 class Constants {
-  static const String serverUrl = 'http://192.168.1.100:8000';
-  static const String wsUrl = 'ws://192.168.1.100:8000';
+  static const String serverUrl = 'http://10.0.2.2:8000';
+  static const String wsUrl = 'ws://10.0.2.2:8000';
   static const String defaultLanguage = 'zh-TW';
   static const List<String> supportedLanguages = ['zh-TW', 'ja', 'en'];
   static const int maxChatHistory = 50;

@@ -55,7 +55,7 @@ async def startup():
     stt_engine = STTEngine(config.stt)
     agent = AgentOrchestrator(llm_client, config)
 
-    logger.info(f"Server running on {config.server.host}:{config.server.port}")
+    logger.info(f"Server running on {config.host}:{config.port}")
 
 
 @app.on_event("shutdown")

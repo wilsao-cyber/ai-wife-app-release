@@ -1,10 +1,117 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../models/vrm_model.dart';
+
+/// Copies bundled vrm_viewer assets to a temp directory and starts a local
+/// HTTP server so that ES module imports work correctly in the WebView.
+class _LocalAssetServer {
+  HttpServer? _server;
+  String? _baseUrl;
+
+  String? get baseUrl => _baseUrl;
+
+  Future<void> start() async {
+    if (_server != null) return;
+
+    // Copy assets to a temp directory
+    final tempDir = await getTemporaryDirectory();
+    final assetDir = Directory('${tempDir.path}/vrm_viewer');
+    await assetDir.create(recursive: true);
+    await Directory('${assetDir.path}/js').create(recursive: true);
+    await Directory('${assetDir.path}/utils').create(recursive: true);
+
+    // List of asset files to copy
+    const assets = [
+      'assets/vrm_viewer/vrm_viewer.html',
+      'assets/vrm_viewer/js/vrm_controller.js',
+      'assets/vrm_viewer/js/lip_sync.js',
+      'assets/vrm_viewer/js/ar_session.js',
+      'assets/vrm_viewer/js/three.module.min.js',
+      'assets/vrm_viewer/js/three-vrm.module.min.js',
+      'assets/vrm_viewer/js/OrbitControls.js',
+      'assets/vrm_viewer/js/GLTFLoader.js',
+      'assets/vrm_viewer/utils/BufferGeometryUtils.js',
+    ];
+
+    for (final asset in assets) {
+      try {
+        final data = await rootBundle.load(asset);
+        final relativePath = asset.replaceFirst('assets/vrm_viewer/', '');
+        final file = File('${assetDir.path}/$relativePath');
+        await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
+      } catch (e) {
+        debugPrint('Failed to copy asset $asset: $e');
+      }
+    }
+
+    // Also copy model files
+    try {
+      final modelsDir = Directory('${tempDir.path}/models');
+      if (!await modelsDir.exists()) {
+        await modelsDir.create(recursive: true);
+      }
+      final modelData = await rootBundle.load('assets/models/character.vrm');
+      await File('${modelsDir.path}/character.vrm')
+          .writeAsBytes(modelData.buffer.asUint8List(), flush: true);
+    } catch (e) {
+      debugPrint('Failed to copy model: $e');
+    }
+
+    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _baseUrl = 'http://localhost:${_server!.port}';
+
+    _server!.listen((request) async {
+      var path = request.uri.path;
+      if (path == '/') path = '/vrm_viewer.html';
+
+      // Determine the file path
+      String filePath;
+      if (path.startsWith('/models/')) {
+        filePath = '${tempDir.path}$path';
+      } else {
+        filePath = '${assetDir.path}$path';
+      }
+
+      final file = File(filePath);
+      if (await file.exists()) {
+        final ext = path.split('.').last.toLowerCase();
+        final contentType = switch (ext) {
+          'html' => 'text/html',
+          'js' => 'application/javascript',
+          'json' => 'application/json',
+          'vrm' || 'glb' || 'gltf' => 'model/gltf-binary',
+          'png' => 'image/png',
+          _ => 'application/octet-stream',
+        };
+
+        request.response
+          ..headers.set('Content-Type', contentType)
+          ..headers.set('Access-Control-Allow-Origin', '*');
+        await request.response.addStream(file.openRead());
+        await request.response.close();
+      } else {
+        request.response.statusCode = 404;
+        request.response.write('Not found: $path');
+        await request.response.close();
+      }
+    });
+  }
+
+  Future<void> stop() async {
+    await _server?.close();
+    _server = null;
+    _baseUrl = null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // VrmViewerController
@@ -178,6 +285,7 @@ class VrmViewerWidget extends StatefulWidget {
 class _VrmViewerWidgetState extends State<VrmViewerWidget> {
   late final VrmViewerController _controller;
   late final WebViewController _webViewController;
+  final _LocalAssetServer _assetServer = _LocalAssetServer();
 
   bool _loading = true;
   String? _errorMessage;
@@ -210,12 +318,23 @@ class _VrmViewerWidgetState extends State<VrmViewerWidget> {
             _setError('WebView error: ${error.description}');
           },
         ),
-      )
-      ..loadFlutterAsset('assets/vrm_viewer/vrm_viewer.html');
+      );
 
     _controller._attach(_webViewController);
-
     _eventSubscription = _controller.events.listen(_handleEvent);
+
+    // Start the local asset server and load the page via HTTP
+    _startAndLoad();
+  }
+
+  Future<void> _startAndLoad() async {
+    try {
+      await _assetServer.start();
+      final url = '${_assetServer.baseUrl}/vrm_viewer.html';
+      await _webViewController.loadRequest(Uri.parse(url));
+    } catch (e) {
+      _setError('Failed to start asset server: $e');
+    }
   }
 
   @override
@@ -232,6 +351,7 @@ class _VrmViewerWidgetState extends State<VrmViewerWidget> {
   @override
   void dispose() {
     _eventSubscription?.cancel();
+    _assetServer.stop();
     // Only dispose the controller if we created it internally.
     if (widget.controller == null) {
       _controller.dispose();
@@ -293,9 +413,11 @@ class _VrmViewerWidgetState extends State<VrmViewerWidget> {
   String _resolveModelUrl(VrmModelSource source) {
     switch (source.type) {
       case VrmModelSourceType.asset:
-        // The HTML is at assets/vrm_viewer/vrm_viewer.html.
-        // Assets under assets/models/ are therefore at ../models/<filename>.
         final filename = source.path.split('/').last;
+        final base = _assetServer.baseUrl;
+        if (base != null) {
+          return '$base/models/$filename';
+        }
         return '../models/$filename';
 
       case VrmModelSourceType.file:
@@ -330,7 +452,7 @@ class _VrmViewerWidgetState extends State<VrmViewerWidget> {
         // The WebView is always present so the JS context survives state changes.
         WebViewWidget(
           controller: _webViewController,
-          gestureRecognizers: widget.enableInteraction ? null : const {},
+          gestureRecognizers: const <Factory<OneSequenceGestureRecognizer>>{},
         ),
 
         // Loading overlay

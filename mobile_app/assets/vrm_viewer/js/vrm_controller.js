@@ -8,7 +8,6 @@ import { ARSession } from './ar_session.js';
 // ── State ──────────────────────────────────────────────────────────────────────
 let scene, camera, renderer, controls, clock;
 let currentVrm = null;
-let blinkTimeoutId = null;
 let arSession = null;
 
 const lipSync = new LipSyncEngine();
@@ -184,54 +183,55 @@ function updateBreathing(delta) {
 
   const chest = currentVrm.humanoid.getNormalizedBoneNode('chest');
   const spine = currentVrm.humanoid.getNormalizedBoneNode('spine');
+  const head = currentVrm.humanoid.getNormalizedBoneNode('head');
 
   const t = clock.getElapsedTime();
-  const breathOffset = Math.sin(t * 0.8) * 0.01;
+  const breathOffset = Math.sin(t * 0.8) * 0.04;
+  const swayOffset = Math.sin(t * 0.3) * 0.015;
 
   if (chest) {
     chest.rotation.x = breathOffset;
+    chest.rotation.z = Math.sin(t * 0.25) * 0.005;
   }
   if (spine) {
-    spine.rotation.x = breathOffset * 0.5;
+    spine.rotation.x = breathOffset * 0.6;
+    spine.rotation.z = swayOffset;
+  }
+  if (head) {
+    head.rotation.x = Math.sin(t * 0.5) * 0.02;
+    head.rotation.z = Math.sin(t * 0.4) * 0.01;
   }
 }
 
-// ── Idle animation: blink ──────────────────────────────────────────────────────
+// ── Idle animation: blink (render-loop driven) ───────────────────────────────
+let nextBlinkTime = 0;
+let blinkEndTime = 0;
+
+function updateBlink() {
+  if (!idleEnabled || !currentVrm || !currentVrm.expressionManager) return;
+
+  const t = clock.getElapsedTime();
+
+  if (t >= blinkEndTime && t >= nextBlinkTime) {
+    // Start a blink
+    currentVrm.expressionManager.setValue('blink', 1.0);
+    blinkEndTime = t + 0.15; // blink lasts 150ms
+    nextBlinkTime = t + 2.0 + Math.random() * 4.0; // next blink in 2-6s
+  } else if (t >= blinkEndTime) {
+    // Blink is over
+    currentVrm.expressionManager.setValue('blink', 0);
+  }
+}
+
 function startBlink() {
-  stopBlink();
-  scheduleBlink();
+  nextBlinkTime = clock.getElapsedTime() + 1.0;
+  blinkEndTime = 0;
 }
 
 function stopBlink() {
-  if (blinkTimeoutId !== null) {
-    clearTimeout(blinkTimeoutId);
-    blinkTimeoutId = null;
+  if (currentVrm && currentVrm.expressionManager) {
+    currentVrm.expressionManager.setValue('blink', 0);
   }
-}
-
-function scheduleBlink() {
-  // Random interval between 2-6 seconds
-  const interval = 2000 + Math.random() * 4000;
-  blinkTimeoutId = setTimeout(() => {
-    doBlink();
-  }, interval);
-}
-
-function doBlink() {
-  if (!currentVrm || !currentVrm.expressionManager) {
-    scheduleBlink();
-    return;
-  }
-
-  currentVrm.expressionManager.setValue('blink', 1.0);
-
-  // Hold blink for 150ms then release
-  setTimeout(() => {
-    if (currentVrm && currentVrm.expressionManager) {
-      currentVrm.expressionManager.setValue('blink', 0);
-    }
-    scheduleBlink();
-  }, 150);
 }
 
 // ── Camera control ─────────────────────────────────────────────────────────────
@@ -259,6 +259,8 @@ function captureFrame() {
 }
 
 // ── Render loop ────────────────────────────────────────────────────────────────
+const lookAtTarget = new THREE.Vector3(0, 1.3, 10);
+
 function animate() {
   requestAnimationFrame(animate);
 
@@ -267,6 +269,18 @@ function animate() {
   // Update VRM
   if (currentVrm) {
     updateBreathing(delta);
+    updateBlink();
+
+    // Make character look toward camera
+    if (currentVrm.lookAt) {
+      currentVrm.lookAt.lookAt(lookAtTarget);
+    }
+
+    // Explicitly update expression manager so blink/expression changes apply
+    if (currentVrm.expressionManager) {
+      currentVrm.expressionManager.update();
+    }
+
     currentVrm.update(delta);
   }
 
