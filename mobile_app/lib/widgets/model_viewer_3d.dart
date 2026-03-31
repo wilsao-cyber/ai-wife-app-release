@@ -29,6 +29,10 @@ class ModelViewer3D extends StatelessWidget {
         backgroundColor: const Color(0x00000000),
         shadowIntensity: 0.5,
         environmentImage: 'neutral',
+        loading: Loading.eager,
+        reveal: Reveal.auto,
+        debugLogging: true,
+        innerModelViewerHtml: '<script type="module" src="model-viewer.min.js" defer></script>',
       ),
     );
   }

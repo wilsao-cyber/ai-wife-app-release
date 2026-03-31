@@ -62,7 +62,7 @@ class _HomeTab extends StatelessWidget {
             Expanded(
               flex: 3,
               child: ModelViewer3D(
-                modelUrl: 'assets/models/character_hq.glb',
+                modelUrl: 'assets/models/character.glb',
                 enableInteraction: true,
               ),
             ),
