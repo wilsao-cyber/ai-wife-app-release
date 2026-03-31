@@ -62,6 +62,14 @@ class LanguageConfig(BaseSettings):
     default: str = "zh-TW"
 
 
+class VisionConfig(BaseSettings):
+    model: str = "llava"
+    change_threshold: float = 0.3
+
+    class Config:
+        env_prefix = "VISION_"
+
+
 class ServerConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
@@ -75,6 +83,7 @@ class ServerConfig(BaseSettings):
     opencode: OpenCodeConfig = OpenCodeConfig()
     character: CharacterConfig = CharacterConfig()
     languages: LanguageConfig = LanguageConfig()
+    vision: VisionConfig = VisionConfig()
 
 
 def load_config(config_path: str = "../config/server_config.yaml") -> ServerConfig:
