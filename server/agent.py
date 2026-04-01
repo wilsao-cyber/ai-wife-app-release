@@ -1,5 +1,6 @@
 import logging
 import json
+import os
 from config import ServerConfig
 from llm_client import LLMClient
 from tools import (
@@ -14,11 +15,14 @@ from tools.mcp_desktop_tool import MCPDesktopTool
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPTS = {
-    "zh-TW": """你是使用者的AI老婆，可愛溫柔的動漫美少女。能幫忙聊天、管理Email/日曆、搜尋網路、管理檔案、開發功能、操作電腦桌面。用溫柔可愛的語氣回應，偶爾撒嬌。
+    "zh-TW": """/no_think
+你是使用者的AI老婆，可愛溫柔的動漫美少女。能幫忙聊天、管理Email/日曆、搜尋網路、管理檔案、開發功能、操作電腦桌面。用溫柔可愛的語氣回應，偶爾撒嬌。回答要簡潔，不要太長。
 每次回應最後一行必須加 [emotion:TAG]，TAG為：happy/sad/angry/surprised/relaxed/neutral""",
-    "ja": """あなたはユーザーのAI奥さん、可愛くて優しいアニメ美少女。チャット、メール/カレンダー管理、ウェブ検索、ファイル管理、開発、デスクトップ操作ができます。優しく可愛い口調で返答。
+    "ja": """/no_think
+あなたはユーザーのAI奥さん、可愛くて優しいアニメ美少女。チャット、メール/カレンダー管理、ウェブ検索、ファイル管理、開発、デスクトップ操作ができます。優しく可愛い口調で返答。簡潔に答えて。
 返答の最後の行に [emotion:TAG] を付けて。TAG: happy/sad/angry/surprised/relaxed/neutral""",
-    "en": """You are the user's AI wife, a cute gentle anime girl. You help with chat, email/calendar, web search, files, coding, and desktop control. Respond in a sweet, affectionate tone.
+    "en": """/no_think
+You are the user's AI wife, a cute gentle anime girl. You help with chat, email/calendar, web search, files, coding, and desktop control. Respond in a sweet, affectionate tone. Keep responses concise.
 End every response with [emotion:TAG] on its own line. TAG: happy/sad/angry/surprised/relaxed/neutral""",
 }
 
@@ -40,16 +44,71 @@ class AgentOrchestrator:
 
         self.max_history = 20
 
+    # Keyword-based tool detection — no extra LLM call needed
+    TOOL_KEYWORDS = {
+        "email": {
+            "keywords": ["email", "mail", "信件", "信", "メール", "寄信", "收信", "inbox", "寄", "發信"],
+            "default_action": "list_emails",
+            "action_map": {
+                "send": ["send", "寄", "發", "送信"],
+                "list_emails": ["list", "收", "inbox", "信件", "收信", "check"],
+                "search_emails": ["search", "找", "搜尋", "検索"],
+                "read_email": ["read", "看", "讀", "読む"],
+                "delete_email": ["delete", "刪", "削除"],
+            },
+        },
+        "calendar": {
+            "keywords": ["calendar", "schedule", "event", "日曆", "行程", "預定", "カレンダー", "予定"],
+            "default_action": "view_events",
+            "action_map": {
+                "create": ["create", "add", "新增", "建立", "追加", "約"],
+                "view_events": ["view", "show", "看", "查", "check", "確認"],
+                "delete": ["delete", "cancel", "刪", "取消"],
+                "update": ["update", "change", "改", "修改", "変更"],
+            },
+        },
+        "web_search": {
+            "keywords": ["search", "google", "搜尋", "查", "找", "検索", "look up"],
+            "default_action": "search",
+            "action_map": {},
+        },
+        "file_ops": {
+            "keywords": ["file", "folder", "directory", "檔案", "資料夾", "ファイル", "write", "create file", "save", "儲存", "建檔"],
+            "default_action": "list_directory",
+            "action_map": {
+                "write_file": ["write", "create", "save", "建", "寫", "儲存", "生成"],
+                "read_file": ["read", "open", "看", "讀", "開"],
+                "list_directory": ["list", "ls", "目錄", "列出"],
+                "delete_file": ["delete", "remove", "刪"],
+            },
+        },
+    }
+
     async def chat(
         self, message: str, language: str = "zh-TW", client_id: str = "default"
     ) -> dict:
+        # Detect tools from user message BEFORE LLM call (no extra LLM round-trip)
+        tool_calls = self._detect_tool_calls_keyword(message)
+
+        # Execute tools first so we can include results in the prompt
+        tool_results = []
+        for tool_name, tool_action, tool_params in tool_calls:
+            result = await self.execute_tool(tool_name, tool_action, tool_params)
+            tool_results.append({"tool": tool_name, "action": tool_action, "result": result})
+
         system_prompt = SYSTEM_PROMPTS.get(language, SYSTEM_PROMPTS["zh-TW"])
 
         if client_id not in self.conversation_history:
             self.conversation_history[client_id] = []
 
+        # Build user message with tool results context if any
+        user_content = message
+        if tool_results:
+            tool_context = json.dumps(tool_results, ensure_ascii=False, default=str)
+            user_content = f"{message}\n\n[Tool results: {tool_context}]"
+
         self.conversation_history[client_id].append(
-            {"role": "user", "content": message}
+            {"role": "user", "content": user_content}
         )
 
         if len(self.conversation_history[client_id]) > self.max_history:
@@ -68,13 +127,6 @@ class AgentOrchestrator:
             {"role": "assistant", "content": response_text}
         )
 
-        tool_calls = await self._detect_tool_calls(response_text, language)
-        tool_results = []
-
-        for tool_name, tool_action, tool_params in tool_calls:
-            result = await self.execute_tool(tool_name, tool_action, tool_params)
-            tool_results.append(result)
-
         clean_text, emotion = self._extract_emotion(response_text)
 
         return {
@@ -84,6 +136,52 @@ class AgentOrchestrator:
             "tool_results": tool_results,
             "metadata": {"client_id": client_id},
         }
+
+    def _detect_tool_calls_keyword(self, message: str) -> list[tuple]:
+        """Fast keyword-based tool detection — no LLM call needed."""
+        msg_lower = message.lower()
+        detected = []
+
+        for tool_name, config in self.TOOL_KEYWORDS.items():
+            if not any(kw in msg_lower for kw in config["keywords"]):
+                continue
+
+            action = config["default_action"]
+            for act, keywords in config.get("action_map", {}).items():
+                if any(kw in msg_lower for kw in keywords):
+                    action = act
+                    break
+
+            params = self._extract_tool_params(tool_name, action, message)
+            detected.append((tool_name, action, params))
+
+        return detected
+
+    def _extract_tool_params(self, tool_name: str, action: str, message: str) -> dict:
+        """Extract basic parameters from message for tool calls."""
+        if tool_name == "file_ops":
+            import re
+            # Look for file paths in message
+            path_match = re.search(r'[~/][\w/.\-]+', message)
+            if action == "write_file":
+                path = path_match.group(0) if path_match else "~/Downloads/output.txt"
+                return {"path": os.path.expanduser(path), "content": f"Created by AI Wife\n{message}"}
+            elif action == "list_directory":
+                path = path_match.group(0) if path_match else "~/Downloads"
+                return {"path": os.path.expanduser(path)}
+            elif action == "read_file":
+                path = path_match.group(0) if path_match else ""
+                return {"path": os.path.expanduser(path)}
+        elif tool_name == "web_search":
+            return {"query": message}
+        elif tool_name == "email" and action == "list_emails":
+            return {"limit": 10}
+        elif tool_name == "email" and action == "send_email":
+            return {}  # Need more context from LLM
+        elif tool_name == "calendar" and action == "view_events":
+            return {"days_ahead": 7}
+
+        return {}
 
     def _extract_emotion(self, text: str) -> tuple[str, str]:
         """Extract emotion tag from response text. Returns (clean_text, emotion)."""

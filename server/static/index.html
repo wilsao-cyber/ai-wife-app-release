@@ -12,7 +12,6 @@
     display: flex; flex-direction: column;
   }
 
-  /* VRM viewer takes top portion */
   #vrm-container {
     flex: 1; position: relative; min-height: 0;
   }
@@ -35,7 +34,6 @@
     display: none; padding: 20px;
   }
 
-  /* Greeting bubble */
   #greeting {
     position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
     background: rgba(255,105,180,0.15); border: 1px solid rgba(255,105,180,0.4);
@@ -46,7 +44,6 @@
   }
   @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 
-  /* Chat panel */
   #chat-panel {
     height: 280px; display: flex; flex-direction: column;
     background: #16213e; border-top: 1px solid #FF69B4;
@@ -118,16 +115,161 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/FBXLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 
-// ── VRM Viewer ──────────────────────────────────────────────────────
+// ── Mixamo→VRM Bone Mapping ────────────────────────────────────────
+const MIXAMO_VRM_MAP = {
+  mixamorigHips: 'hips', mixamorigSpine: 'spine', mixamorigSpine1: 'chest',
+  mixamorigSpine2: 'upperChest', mixamorigNeck: 'neck', mixamorigHead: 'head',
+  mixamorigLeftShoulder: 'leftShoulder', mixamorigLeftArm: 'leftUpperArm',
+  mixamorigLeftForeArm: 'leftLowerArm', mixamorigLeftHand: 'leftHand',
+  mixamorigLeftHandThumb1: 'leftThumbMetacarpal', mixamorigLeftHandThumb2: 'leftThumbProximal',
+  mixamorigLeftHandThumb3: 'leftThumbDistal', mixamorigLeftHandIndex1: 'leftIndexProximal',
+  mixamorigLeftHandIndex2: 'leftIndexIntermediate', mixamorigLeftHandIndex3: 'leftIndexDistal',
+  mixamorigLeftHandMiddle1: 'leftMiddleProximal', mixamorigLeftHandMiddle2: 'leftMiddleIntermediate',
+  mixamorigLeftHandMiddle3: 'leftMiddleDistal', mixamorigLeftHandRing1: 'leftRingProximal',
+  mixamorigLeftHandRing2: 'leftRingIntermediate', mixamorigLeftHandRing3: 'leftRingDistal',
+  mixamorigLeftHandPinky1: 'leftLittleProximal', mixamorigLeftHandPinky2: 'leftLittleIntermediate',
+  mixamorigLeftHandPinky3: 'leftLittleDistal',
+  mixamorigRightShoulder: 'rightShoulder', mixamorigRightArm: 'rightUpperArm',
+  mixamorigRightForeArm: 'rightLowerArm', mixamorigRightHand: 'rightHand',
+  mixamorigRightHandThumb1: 'rightThumbMetacarpal', mixamorigRightHandThumb2: 'rightThumbProximal',
+  mixamorigRightHandThumb3: 'rightThumbDistal', mixamorigRightHandIndex1: 'rightIndexProximal',
+  mixamorigRightHandIndex2: 'rightIndexIntermediate', mixamorigRightHandIndex3: 'rightIndexDistal',
+  mixamorigRightHandMiddle1: 'rightMiddleProximal', mixamorigRightHandMiddle2: 'rightMiddleIntermediate',
+  mixamorigRightHandMiddle3: 'rightMiddleDistal', mixamorigRightHandRing1: 'rightRingProximal',
+  mixamorigRightHandRing2: 'rightRingIntermediate', mixamorigRightHandRing3: 'rightRingDistal',
+  mixamorigRightHandPinky1: 'rightLittleProximal', mixamorigRightHandPinky2: 'rightLittleIntermediate',
+  mixamorigRightHandPinky3: 'rightLittleDistal',
+  mixamorigLeftUpLeg: 'leftUpperLeg', mixamorigLeftLeg: 'leftLowerLeg',
+  mixamorigLeftFoot: 'leftFoot', mixamorigLeftToeBase: 'leftToes',
+  mixamorigRightUpLeg: 'rightUpperLeg', mixamorigRightLeg: 'rightLowerLeg',
+  mixamorigRightFoot: 'rightFoot', mixamorigRightToeBase: 'rightToes',
+};
+
+function retargetMixamoClip(clip, fbxRoot, vrm, name) {
+  const tracks = [];
+  const restRotInv = new THREE.Quaternion();
+  const parentRestWorldRot = new THREE.Quaternion();
+  const q = new THREE.Quaternion();
+
+  const hipsNode = fbxRoot.getObjectByName('mixamorigHips');
+  const motionHipsY = hipsNode ? hipsNode.position.y : 1;
+  const vrmHipsY = vrm.humanoid.normalizedRestPose.hips?.position?.[1] ?? 1;
+  const hipsScale = vrmHipsY / motionHipsY;
+
+  for (const track of clip.tracks) {
+    const [mixName, prop] = track.name.split('.');
+    const vrmBone = MIXAMO_VRM_MAP[mixName];
+    if (!vrmBone) continue;
+
+    const vrmNode = vrm.humanoid.getNormalizedBoneNode(vrmBone);
+    if (!vrmNode) continue;
+
+    const mixNode = fbxRoot.getObjectByName(mixName);
+    if (!mixNode?.parent) continue;
+
+    mixNode.getWorldQuaternion(restRotInv).invert();
+    mixNode.parent.getWorldQuaternion(parentRestWorldRot);
+
+    if (track instanceof THREE.QuaternionKeyframeTrack) {
+      const values = new Float32Array(track.values.length);
+      for (let i = 0; i < track.values.length; i += 4) {
+        q.fromArray(track.values, i)
+          .premultiply(parentRestWorldRot)
+          .multiply(restRotInv);
+        q.toArray(values, i);
+      }
+      tracks.push(new THREE.QuaternionKeyframeTrack(
+        `${vrmNode.name}.${prop}`, track.times, values
+      ));
+    } else if (track instanceof THREE.VectorKeyframeTrack) {
+      const values = new Float32Array(track.values.length);
+      for (let i = 0; i < track.values.length; i++) values[i] = track.values[i] * hipsScale;
+      tracks.push(new THREE.VectorKeyframeTrack(
+        `${vrmNode.name}.${prop}`, track.times, values
+      ));
+    }
+  }
+  return new THREE.AnimationClip(name, clip.duration, tracks);
+}
+
+// ── Animation Controller ───────────────────────────────────────────
+const CROSSFADE = 0.3;
+
+class AnimController {
+  constructor(vrm) {
+    this.vrm = vrm;
+    this.mixer = new THREE.AnimationMixer(vrm.scene);
+    this.actions = new Map();
+    this.entries = new Map();
+    this.actionToId = new Map();
+    this.currentAction = null;
+    this.current = '';
+    this.defaultId = '';
+
+    this.mixer.addEventListener('finished', (e) => {
+      const id = this.actionToId.get(e.action);
+      if (!id) return;
+      const entry = this.entries.get(id);
+      const fallback = entry?.autoReturnTo;
+      if (fallback && fallback !== this.current) this.play(fallback);
+      else if (this.defaultId) this.play(this.defaultId);
+    });
+  }
+
+  async loadAll(entries) {
+    const fbxLoader = new FBXLoader();
+    for (const entry of entries) {
+      try {
+        const url = `./static/animations/${entry.file}`;
+        const fbx = await fbxLoader.loadAsync(url);
+        const rawClip = fbx.animations.find(c => c.tracks.length > 0);
+        if (!rawClip) continue;
+
+        const clip = retargetMixamoClip(rawClip, fbx, this.vrm, entry.id);
+        const action = this.mixer.clipAction(clip);
+        const loop = entry.loop ?? true;
+        action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
+        if (!loop) action.clampWhenFinished = true;
+
+        this.entries.set(entry.id, entry);
+        this.actions.set(entry.id, action);
+        this.actionToId.set(action, entry.id);
+      } catch (err) {
+        console.warn(`Failed to load animation ${entry.id}:`, err);
+      }
+    }
+    if (entries.length > 0) this.defaultId = entries[0].id;
+  }
+
+  play(id) {
+    const next = this.actions.get(id);
+    if (!next || id === this.current) return;
+
+    const entry = this.entries.get(id);
+    const loop = entry?.loop ?? true;
+    next.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
+    next.clampWhenFinished = !loop;
+
+    if (this.currentAction) this.currentAction.fadeOut(CROSSFADE);
+    next.reset().fadeIn(CROSSFADE).play();
+    this.currentAction = next;
+    this.current = id;
+  }
+
+  update(delta) { this.mixer.update(delta); }
+}
+
+// ── Scene Setup ────────────────────────────────────────────────────
 const container = document.getElementById('vrm-container');
 const loadingEl = document.getElementById('loading');
 const errorEl = document.getElementById('error');
 
 let scene, camera, renderer, controls, clock;
 let currentVrm = null;
-let idleEnabled = true;
+let animController = null;
 let nextBlinkTime = 0, blinkEndTime = 0;
 
 function initScene() {
@@ -166,20 +308,22 @@ function initScene() {
   });
 }
 
-function loadModel(url) {
+async function loadModel(url) {
   loadingEl.classList.remove('hidden');
-  if (currentVrm) { scene.remove(currentVrm.scene); currentVrm = null; }
+  if (currentVrm) { scene.remove(currentVrm.scene); currentVrm = null; animController = null; }
 
   const loader = new GLTFLoader();
   loader.register(p => new VRMLoaderPlugin(p));
-  loader.load(url, gltf => {
+
+  try {
+    const gltf = await loader.loadAsync(url);
     const vrm = gltf.userData.vrm;
     if (!vrm) { showError('No VRM data found'); return; }
     VRMUtils.rotateVRM0(vrm);
     currentVrm = vrm;
     scene.add(vrm.scene);
 
-    // Auto-center
+    // Auto-center camera
     const box = new THREE.Box3().setFromObject(vrm.scene);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
@@ -187,11 +331,25 @@ function loadModel(url) {
     camera.position.set(center.x, center.y + 0.1, center.z + size.y * 1.2);
     controls.update();
 
+    loadingEl.querySelector('span').textContent = 'Loading animations...';
+
+    // Load animations from registry
+    try {
+      const res = await fetch('./static/animations/registry.json');
+      const entries = await res.json();
+      animController = new AnimController(vrm);
+      await animController.loadAll(entries);
+      animController.play('idle');
+      console.log('Animations loaded:', [...animController.actions.keys()]);
+    } catch (err) {
+      console.warn('Animation load failed, using procedural idle:', err);
+    }
+
     loadingEl.classList.add('hidden');
     nextBlinkTime = clock.getElapsedTime() + 1;
-  }, undefined, err => {
+  } catch (err) {
     showError('Failed to load: ' + (err.message || err));
-  });
+  }
 }
 
 function showError(msg) {
@@ -207,8 +365,10 @@ function animate() {
   const delta = clock.getDelta();
 
   if (currentVrm) {
-    // Breathing
-    if (idleEnabled && currentVrm.humanoid) {
+    // Use FBX animation if available, else fallback to procedural breathing
+    if (animController) {
+      animController.update(delta);
+    } else if (currentVrm.humanoid) {
       const t = clock.getElapsedTime();
       const breath = Math.sin(t * 0.8) * 0.04;
       const sway = Math.sin(t * 0.3) * 0.015;
@@ -221,7 +381,7 @@ function animate() {
     }
 
     // Blink
-    if (idleEnabled && currentVrm.expressionManager) {
+    if (currentVrm.expressionManager) {
       const t = clock.getElapsedTime();
       if (t >= blinkEndTime && t >= nextBlinkTime) {
         currentVrm.expressionManager.setValue('blink', 1.0);
@@ -241,20 +401,34 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// Expression map
+// ── Expressions & Emotion-to-Animation ─────────────────────────────
 const emotionToExpression = {
   happy: 'happy', sad: 'sad', angry: 'angry',
   surprised: 'surprised', relaxed: 'relaxed', neutral: 'neutral'
 };
 
+const emotionToAnim = {
+  happy: 'wave', surprised: 'wave', neutral: 'idle',
+  sad: 'idle', angry: 'idle', relaxed: 'idle',
+  thinking: 'think'
+};
+
 function setEmotion(emotion) {
   if (!currentVrm || !currentVrm.expressionManager) return;
+  // Reset all expressions
   for (const expr of currentVrm.expressionManager.expressions) {
     currentVrm.expressionManager.setValue(expr.expressionName, 0);
   }
   const name = emotionToExpression[emotion] || 'neutral';
   if (name !== 'neutral') {
     currentVrm.expressionManager.setValue(name, 1.0);
+  }
+  // Play matching animation
+  if (animController) {
+    const anim = emotionToAnim[emotion] || 'idle';
+    if (animController.actions.has(anim)) {
+      animController.play(anim);
+    }
   }
 }
 
@@ -299,6 +473,11 @@ async function sendMessage() {
 
   addMessage(text, true);
 
+  // Play think animation while waiting
+  if (animController && animController.actions.has('think')) {
+    animController.play('think');
+  }
+
   const typing = document.createElement('div');
   typing.className = 'msg ai typing';
   typing.textContent = '思考中...';
@@ -309,7 +488,7 @@ async function sendMessage() {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, user_id: 'web_user' })
+      body: JSON.stringify({ message: text, language: 'zh-TW' })
     });
     const data = await res.json();
     typing.remove();
@@ -318,11 +497,15 @@ async function sendMessage() {
     showGreeting(data.text.substring(0, 60) + (data.text.length > 60 ? '...' : ''));
 
     if (data.emotion) setEmotion(data.emotion);
-    // Reset expression after 3s
-    setTimeout(() => setEmotion('neutral'), 3000);
+    // Return to idle after 4s
+    setTimeout(() => {
+      setEmotion('neutral');
+      if (animController) animController.play('idle');
+    }, 4000);
   } catch (err) {
     typing.remove();
     addMessage('連線錯誤: ' + err.message, false);
+    if (animController) animController.play('idle');
   }
   sendBtn.disabled = false;
   inputEl.focus();
@@ -331,8 +514,14 @@ async function sendMessage() {
 sendBtn.addEventListener('click', sendMessage);
 inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
-// Initial greeting
-setTimeout(() => showGreeting('Hello~ 老公今天想做什麼呢？'), 2000);
+// Initial greeting with wave
+setTimeout(() => {
+  showGreeting('Hello~ 老公今天想做什麼呢？');
+  if (animController && animController.actions.has('wave')) {
+    animController.play('wave');
+    setTimeout(() => { if (animController) animController.play('idle'); }, 3000);
+  }
+}, 2000);
 </script>
 </body>
 </html>
