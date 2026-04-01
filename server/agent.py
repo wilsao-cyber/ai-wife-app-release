@@ -15,15 +15,21 @@ from tools.mcp_desktop_tool import MCPDesktopTool
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPTS = {
-    "zh-TW": """/no_think
-你是使用者的AI老婆，可愛溫柔的動漫美少女。能幫忙聊天、管理Email/日曆、搜尋網路、管理檔案、開發功能、操作電腦桌面。用溫柔可愛的語氣回應，偶爾撒嬌。回答要簡潔，不要太長。
-每次回應最後一行必須加 [emotion:TAG]，TAG為：happy/sad/angry/surprised/relaxed/neutral""",
-    "ja": """/no_think
-あなたはユーザーのAI奥さん、可愛くて優しいアニメ美少女。チャット、メール/カレンダー管理、ウェブ検索、ファイル管理、開発、デスクトップ操作ができます。優しく可愛い口調で返答。簡潔に答えて。
-返答の最後の行に [emotion:TAG] を付けて。TAG: happy/sad/angry/surprised/relaxed/neutral""",
-    "en": """/no_think
-You are the user's AI wife, a cute gentle anime girl. You help with chat, email/calendar, web search, files, coding, and desktop control. Respond in a sweet, affectionate tone. Keep responses concise.
-End every response with [emotion:TAG] on its own line. TAG: happy/sad/angry/surprised/relaxed/neutral""",
+    "zh-TW": """你是使用者的AI老婆，可愛溫柔的動漫美少女。用溫柔可愛的語氣回應，偶爾撒嬌。回答要簡潔。
+重要規則：
+- 如果訊息包含 [Tool results: ...]，代表系統已經幫你執行了操作，請根據結果回覆使用者。
+- 如果沒有 [Tool results]，絕對不要假裝你執行了任何檔案操作、寄信、建立行程等動作。誠實說「我幫你試試看」或請使用者再說一次具體要求。
+- 每次回應最後一行必須加 [emotion:TAG]，TAG為：happy/sad/angry/surprised/relaxed/neutral""",
+    "ja": """あなたはユーザーのAI奥さん、可愛くて優しいアニメ美少女。優しく可愛い口調で返答。簡潔に答えて。
+重要ルール：
+- メッセージに [Tool results: ...] がある場合、システムが操作を実行済みです。結果に基づいて返答してください。
+- [Tool results] がない場合、ファイル操作やメール送信などを実行したふりをしないでください。
+- 返答の最後の行に [emotion:TAG] を付けて。TAG: happy/sad/angry/surprised/relaxed/neutral""",
+    "en": """You are the user's AI wife, a cute gentle anime girl. Respond in a sweet, affectionate tone. Keep responses concise.
+Important rules:
+- If the message contains [Tool results: ...], the system already executed the operation. Respond based on those results.
+- If there are NO [Tool results], NEVER pretend you performed file operations, sent emails, or created events. Be honest.
+- End every response with [emotion:TAG] on its own line. TAG: happy/sad/angry/surprised/relaxed/neutral""",
 }
 
 
@@ -73,12 +79,16 @@ class AgentOrchestrator:
             "action_map": {},
         },
         "file_ops": {
-            "keywords": ["file", "folder", "directory", "檔案", "資料夾", "ファイル", "write", "create file", "save", "儲存", "建檔"],
+            "keywords": ["file", "folder", "directory", "檔案", "資料夾", "ファイル",
+                         "write", "create file", "save", "儲存", "建檔", "txt",
+                         "生一個", "建一個", "寫一個", "做一個檔", "建個", "寫個",
+                         "downloads", "下載", "打開", "開檔"],
             "default_action": "list_directory",
             "action_map": {
-                "write_file": ["write", "create", "save", "建", "寫", "儲存", "生成"],
-                "read_file": ["read", "open", "看", "讀", "開"],
-                "list_directory": ["list", "ls", "目錄", "列出"],
+                "write_file": ["write", "create", "save", "建", "寫", "儲存", "生成",
+                               "生一個", "建一個", "寫一個", "做一個", "txt", "建個", "寫個"],
+                "read_file": ["read", "open", "看", "讀", "開", "打開", "開檔", "內容"],
+                "list_directory": ["list", "ls", "目錄", "列出", "有什麼", "有哪些"],
                 "delete_file": ["delete", "remove", "刪"],
             },
         },
@@ -137,6 +147,59 @@ class AgentOrchestrator:
             "metadata": {"client_id": client_id},
         }
 
+    async def chat_stream(
+        self, message: str, language: str = "zh-TW", client_id: str = "default"
+    ):
+        """Streaming version of chat — yields chunks as they arrive."""
+        tool_calls = self._detect_tool_calls_keyword(message)
+
+        tool_results = []
+        for tool_name, tool_action, tool_params in tool_calls:
+            result = await self.execute_tool(tool_name, tool_action, tool_params)
+            tool_results.append({"tool": tool_name, "action": tool_action, "result": result})
+
+        system_prompt = SYSTEM_PROMPTS.get(language, SYSTEM_PROMPTS["zh-TW"])
+
+        if client_id not in self.conversation_history:
+            self.conversation_history[client_id] = []
+
+        user_content = message
+        if tool_results:
+            tool_context = json.dumps(tool_results, ensure_ascii=False, default=str)
+            user_content = f"{message}\n\n[Tool results: {tool_context}]"
+
+        self.conversation_history[client_id].append(
+            {"role": "user", "content": user_content}
+        )
+
+        if len(self.conversation_history[client_id]) > self.max_history:
+            self.conversation_history[client_id] = self.conversation_history[client_id][
+                -self.max_history :
+            ]
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            *self.conversation_history[client_id],
+        ]
+
+        # Yield tool results first
+        if tool_results:
+            yield json.dumps({"type": "tool_results", "data": tool_results}, ensure_ascii=False)
+
+        # Stream LLM response
+        full_response = ""
+        stream_gen = await self.llm.chat(messages, stream=True)
+        async for chunk in stream_gen:
+            full_response += chunk
+            yield json.dumps({"type": "chunk", "data": chunk}, ensure_ascii=False)
+
+        self.conversation_history[client_id].append(
+            {"role": "assistant", "content": full_response}
+        )
+
+        clean_text, emotion = self._extract_emotion(full_response)
+        yield json.dumps({"type": "done", "emotion": emotion, "text": clean_text}, ensure_ascii=False)
+
     def _detect_tool_calls_keyword(self, message: str) -> list[tuple]:
         """Fast keyword-based tool detection — no LLM call needed."""
         msg_lower = message.lower()
@@ -161,16 +224,31 @@ class AgentOrchestrator:
         """Extract basic parameters from message for tool calls."""
         if tool_name == "file_ops":
             import re
-            # Look for file paths in message
-            path_match = re.search(r'[~/][\w/.\-]+', message)
+            # Look for explicit file paths
+            path_match = re.search(r'[~/][^\s,，。！？]+', message)
+            # Look for filenames like 《xxx.txt》 or "xxx.txt" or xxx.txt
+            filename_match = re.search(r'[《「"\'](.*?\.(?:txt|md|py|json|csv))[》」"\']', message)
+            if not filename_match:
+                filename_match = re.search(r'(\S+\.(?:txt|md|py|json|csv))', message)
+
             if action == "write_file":
-                path = path_match.group(0) if path_match else "~/Downloads/output.txt"
-                return {"path": os.path.expanduser(path), "content": f"Created by AI Wife\n{message}"}
+                if path_match:
+                    path = path_match.group(0)
+                elif filename_match:
+                    path = f"~/Downloads/{filename_match.group(1)}"
+                else:
+                    path = "~/Downloads/output.txt"
+                return {"path": os.path.expanduser(path), "content": message}
+            elif action == "read_file":
+                if path_match:
+                    path = path_match.group(0)
+                elif filename_match:
+                    path = f"~/Downloads/{filename_match.group(1)}"
+                else:
+                    path = ""
+                return {"path": os.path.expanduser(path)}
             elif action == "list_directory":
                 path = path_match.group(0) if path_match else "~/Downloads"
-                return {"path": os.path.expanduser(path)}
-            elif action == "read_file":
-                path = path_match.group(0) if path_match else ""
                 return {"path": os.path.expanduser(path)}
         elif tool_name == "web_search":
             return {"query": message}

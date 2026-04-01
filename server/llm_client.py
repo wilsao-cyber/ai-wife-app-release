@@ -31,13 +31,7 @@ class LLMClient:
             "temperature": temperature or self.config.temperature,
             "max_tokens": max_tokens or self.config.max_tokens,
             "stream": stream,
-            "options": {
-                "num_predict": max_tokens or self.config.max_tokens,
-            },
         }
-        # Disable reasoning/thinking for faster responses
-        if not stream:
-            payload["options"]["think"] = False
 
         if stream:
             return self._stream_response(payload)

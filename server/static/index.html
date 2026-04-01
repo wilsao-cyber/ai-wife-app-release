@@ -478,33 +478,92 @@ async function sendMessage() {
     animController.play('think');
   }
 
-  const typing = document.createElement('div');
-  typing.className = 'msg ai typing';
-  typing.textContent = '思考中...';
-  messagesEl.appendChild(typing);
+  // Create AI message bubble that will be filled incrementally
+  const aiDiv = document.createElement('div');
+  aiDiv.className = 'msg ai';
+  const aiSpan = document.createElement('span');
+  aiSpan.textContent = '';
+  aiDiv.appendChild(aiSpan);
+  messagesEl.appendChild(aiDiv);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 
+  let insideThink = false;
+  let fullText = '';
+
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch('/api/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, language: 'zh-TW' })
     });
-    const data = await res.json();
-    typing.remove();
 
-    addMessage(data.text, false, data.emotion);
-    showGreeting(data.text.substring(0, 60) + (data.text.length > 60 ? '...' : ''));
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-    if (data.emotion) setEmotion(data.emotion);
-    // Return to idle after 4s
-    setTimeout(() => {
-      setEmotion('neutral');
-      if (animController) animController.play('idle');
-    }, 4000);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const jsonStr = line.slice(6).trim();
+        if (!jsonStr) continue;
+
+        try {
+          const evt = JSON.parse(jsonStr);
+
+          if (evt.type === 'tool_results') {
+            // Show tool execution info briefly
+            const toolInfo = evt.data.map(t =>
+              `[${t.tool}.${t.action}: ${t.result.success ? 'OK' : t.result.error || 'done'}]`
+            ).join(' ');
+            aiSpan.textContent = toolInfo + '\n';
+          }
+
+          if (evt.type === 'chunk') {
+            let chunk = evt.data;
+            // Filter out <think>...</think> blocks
+            if (chunk.includes('<think>')) insideThink = true;
+            if (insideThink) {
+              if (chunk.includes('</think>')) {
+                chunk = chunk.split('</think>').pop();
+                insideThink = false;
+              } else {
+                continue; // skip thinking content
+              }
+            }
+            fullText += chunk;
+            aiSpan.textContent = fullText;
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          }
+
+          if (evt.type === 'done') {
+            // Clean up: remove [emotion:tag] from displayed text
+            const cleanText = fullText.replace(/\[emotion:\w+\]\s*$/, '').trim();
+            aiSpan.textContent = cleanText;
+            if (evt.emotion) {
+              setEmotion(evt.emotion);
+              const tag = document.createElement('div');
+              tag.className = 'emotion-tag';
+              tag.textContent = evt.emotion;
+              aiDiv.insertBefore(tag, aiSpan);
+            }
+            showGreeting(cleanText.substring(0, 60) + (cleanText.length > 60 ? '...' : ''));
+            setTimeout(() => {
+              setEmotion('neutral');
+              if (animController) animController.play('idle');
+            }, 4000);
+          }
+        } catch (e) { /* skip malformed SSE lines */ }
+      }
+    }
   } catch (err) {
-    typing.remove();
-    addMessage('連線錯誤: ' + err.message, false);
+    if (!fullText) aiSpan.textContent = '連線錯誤: ' + err.message;
     if (animController) animController.play('idle');
   }
   sendBtn.disabled = false;

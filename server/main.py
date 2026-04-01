@@ -8,7 +8,7 @@ from fastapi import (
     HTTPException,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import asyncio
 import logging
@@ -205,6 +205,22 @@ async def api_chat(data: dict):
     language = data.get("language", config.languages.default)
     response = await agent.chat(message, language)
     return response
+
+
+@app.post("/api/chat/stream")
+async def api_chat_stream(data: dict):
+    message = data.get("message", "")
+    language = data.get("language", config.languages.default)
+
+    async def event_generator():
+        async for chunk_json in agent.chat_stream(message, language):
+            yield f"data: {chunk_json}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/stt")
