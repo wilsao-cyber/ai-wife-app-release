@@ -24,15 +24,13 @@ class WebSearchTool:
         self, query: str, num_results: int, language: str
     ) -> dict:
         try:
-            from duckduckgo_search import DDGS
+            try:
+                from ddgs import DDGS
+            except ImportError:
+                from duckduckgo_search import DDGS
 
-            region_map = {"zh-TW": "tw-tw", "ja": "jp-jp", "en": "us-en"}
-            region = region_map.get(language, "us-en")
-
-            with DDGS() as ddgs:
-                raw = list(
-                    ddgs.text(keywords=query, max_results=num_results, region=region)
-                )
+            ddgs = DDGS()
+            raw = ddgs.text(query, max_results=num_results)
 
             results = []
             for item in raw:
