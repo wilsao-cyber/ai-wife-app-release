@@ -31,12 +31,38 @@ class SearchSkill(BaseSkill):
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_fetch",
+                    "description": "擷取指定網頁的文字內容 (Fetch and extract text content from a URL). 用於讀取搜尋結果的詳細內容。回傳的內容會顯示在面板中供用戶閱讀。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "要擷取的網頁 URL",
+                            },
+                        },
+                        "required": ["url"],
+                    },
+                },
+            },
         ]
 
     async def execute(self, tool_name: str, **kwargs) -> dict:
         if tool_name == "web_search":
-            return await self._tool.search(
+            result = await self._tool.search(
                 query=kwargs["query"],
                 num_results=max(5, kwargs.get("num_results", 5)),
             )
+            return result
+        if tool_name == "web_fetch":
+            result = await self._tool.fetch_page_content(kwargs["url"])
+            # Add rich text media for panel display
+            if result.get("content"):
+                content = result["content"]
+                html = f"<h3>{kwargs['url']}</h3><pre style='white-space:pre-wrap;'>{content[:10000]}</pre>"
+                result["media"] = [{"type": "richtext", "title": kwargs["url"], "html": html}]
+            return result
         return {"error": f"Unknown search tool: {tool_name}"}

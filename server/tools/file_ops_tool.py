@@ -49,6 +49,9 @@ class FileOpsTool:
             logger.error(f"List directory failed: {e}")
             return {"error": str(e)}
 
+    IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg"}
+    VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".avi", ".mov"}
+
     async def read_file(self, path: str, encoding: str = "utf-8") -> dict:
         if not self._is_path_allowed(path):
             return {"error": "Path not allowed"}
@@ -59,6 +62,34 @@ class FileOpsTool:
                 return {"error": f"File does not exist: {path}"}
             if target.is_dir():
                 return {"error": f"Path is a directory: {path}"}
+
+            ext = target.suffix.lower()
+
+            # Image files → copy to output and return media
+            if ext in self.IMAGE_EXTENSIONS:
+                import shutil, uuid, os
+                os.makedirs("./output/media", exist_ok=True)
+                fname = f"{uuid.uuid4()}{ext}"
+                shutil.copy2(str(target), f"./output/media/{fname}")
+                return {
+                    "path": str(target),
+                    "type": "image",
+                    "size": target.stat().st_size,
+                    "media": [{"type": "image", "url": f"/api/media/{fname}", "alt": target.name}],
+                }
+
+            # Video files → copy to output and return media
+            if ext in self.VIDEO_EXTENSIONS:
+                import shutil, uuid, os
+                os.makedirs("./output/media", exist_ok=True)
+                fname = f"{uuid.uuid4()}{ext}"
+                shutil.copy2(str(target), f"./output/media/{fname}")
+                return {
+                    "path": str(target),
+                    "type": "video",
+                    "size": target.stat().st_size,
+                    "media": [{"type": "video", "url": f"/api/media/{fname}", "alt": target.name}],
+                }
 
             content = target.read_text(encoding=encoding)
             return {
