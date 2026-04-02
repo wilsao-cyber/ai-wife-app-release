@@ -132,6 +132,28 @@ class EmailSkill(BaseSkill):
         method = dispatch.get(tool_name)
         if not method:
             return {"error": f"Unknown email tool: {tool_name}"}
+
+        # Validate email_id for read/delete — if invalid, auto-fetch from list
+        if tool_name in ("email_read", "email_delete"):
+            eid = kwargs.get("email_id", "")
+            if not eid or len(eid) < 10 or not eid.replace("-", "").replace("_", "").isalnum():
+                listing = await self._tool.list_emails(limit=5)
+                emails = listing.get("emails", [])
+                if not emails:
+                    return {"error": "No emails found"}
+                # Try to match by index if email_id looks like a number
+                try:
+                    idx = int(eid) - 1 if eid.isdigit() else 0
+                    idx = max(0, min(idx, len(emails) - 1))
+                except ValueError:
+                    idx = 0
+                kwargs["email_id"] = emails[idx]["id"]
+                # Rebuild the dispatch lambda with corrected id
+                if tool_name == "email_read":
+                    method = lambda: self._tool.read_email(email_id=kwargs["email_id"])
+                else:
+                    method = lambda: self._tool.delete_email(email_id=kwargs["email_id"])
+
         result = await method()
         # Add rich text media for email_read
         if tool_name == "email_read" and result.get("body"):
