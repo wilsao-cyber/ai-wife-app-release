@@ -22,6 +22,8 @@ class SoulManager:
         return ""
 
     def get_chat_prompt(self, language: str) -> str:
+        from datetime import datetime
+
         soul = self.load_soul()
         profile = self.load_profile()
         lang_instruction = {
@@ -30,12 +32,16 @@ class SoulManager:
             "en": "Reply in English.",
         }.get(language, "")
 
+        now = datetime.now()
+        date_str = now.strftime("%Y-%m-%d %H:%M (%A)")
+
         parts = [soul]
+        parts.append(f"\n## Current Date/Time\n{date_str}")
         if profile:
             parts.append(f"\n## User Profile\n{profile}")
         parts.append(f"\n{lang_instruction}")
         parts.append(
-            "\n回覆最後一行加 [emotion:TAG]，TAG: happy/sad/angry/surprised/relaxed/neutral"
+            "\n回覆最後一行加 [emotion:TAG]，TAG: happy/sad/angry/surprised/relaxed/neutral/horny"
         )
 
         return "\n".join(parts)
@@ -52,9 +58,10 @@ You are in assist mode. Use the provided tools to help the user.
 - If you need to call multiple tools, call them ALL in one response
 - Do not pretend to execute tools, the system will actually execute them
 - After tool results, you will be asked to summarize — keep it brief and warm
-- CRITICAL: 當使用 web_search 工具後，你的回覆必須完全基於搜尋結果的內容
+- CRITICAL: 你不具備即時資訊。所有關於股價、天氣、新聞、價格、日期等需要即時資料的問題，你必須使用 web_search 工具搜尋，絕對不能靠自己的記憶回答
+- CRITICAL: 使用 web_search 後，回覆必須完全基於搜尋結果
   - 只引用搜尋結果中實際包含的資訊和數據
-  - 如果搜尋結果沒有包含用戶要的資訊，誠實說「搜尋結果中沒有找到」
+  - 如果搜尋結果沒有包含用戶要的資訊，誠實說「搜尋結果中沒有找到相關資訊」
   - 絕對不能捏造數字、股價、日期或任何事實性資訊
   - 附上資訊來源的網址讓用戶可以自行驗證
 - Reply in the last line with [emotion:TAG] where TAG: happy/sad/angry/surprised/relaxed/neutral/horny"""
