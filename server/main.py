@@ -125,17 +125,21 @@ async def lifespan(app: FastAPI):
     actual_model = resolve_model(config.llm.model)
     progress.ok(f"{config.llm.provider} @ {config.llm.base_url} [{actual_model}]")
 
-    # Phase 1b: Test LLM connectivity (skip during fast startup)
-    progress.begin("LLM Test Reply")
-    try:
-        await asyncio.sleep(0.1)  # brief pause
-        test_reply = await llm_client.chat(
-            [{"role": "user", "content": "回覆OK"}],
-            think=False,
-        )
-        progress.ok(f"reply: {test_reply[:50]}")
-    except Exception as e:
-        progress.skip(f"{str(e)[:60]}")
+    # Phase 1b: Test LLM connectivity (skip if using local ollama — user will configure cloud provider via UI)
+    if config.llm.provider != "ollama":
+        progress.begin("LLM Test Reply")
+        try:
+            await asyncio.sleep(0.1)
+            test_reply = await llm_client.chat(
+                [{"role": "user", "content": "回覆OK"}],
+                think=False,
+            )
+            progress.ok(f"reply: {test_reply[:50]}")
+        except Exception as e:
+            progress.skip(f"{str(e)[:60]}")
+    else:
+        progress.begin("LLM Test Reply")
+        progress.skip("ollama — will configure via UI")
 
     # Phase 2: TTS Engine
     progress.begin("TTS Engine")
