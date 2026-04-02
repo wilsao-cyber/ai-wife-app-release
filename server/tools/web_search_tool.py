@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+import httpx
 from config import WebSearchConfig
 
 logger = logging.getLogger(__name__)
@@ -8,9 +8,7 @@ logger = logging.getLogger(__name__)
 class WebSearchTool:
     def __init__(self, config: WebSearchConfig):
         self.config = config
-        self.provider = (
-            "duckduckgo"  # Always use DuckDuckGo, no external service needed
-        )
+        self.searxng_url = config.base_url  # http://localhost:8080
 
     async def search(
         self,
@@ -18,39 +16,88 @@ class WebSearchTool:
         num_results: int = 10,
         language: str = "zh-TW",
     ) -> dict:
-        return await self._search_duckduckgo(query, num_results, language)
+        # Try SearXNG first, fallback to Brave Search
+        result = await self._search_searxng(query, num_results, language)
+        if result.get("error"):
+            logger.warning(f"SearXNG failed, trying Brave: {result['error']}")
+            return await self._search_brave(query, num_results, language)
+        return result
 
-    async def _search_duckduckgo(
+    async def _search_searxng(
         self, query: str, num_results: int, language: str
     ) -> dict:
         try:
-            try:
-                from ddgs import DDGS
-            except ImportError:
-                from duckduckgo_search import DDGS
+            lang_map = {"zh-TW": "zh-TW", "ja": "ja", "en": "en"}
+            lang = lang_map.get(language, "en")
 
-            ddgs = DDGS()
-            raw = ddgs.text(query, max_results=num_results)
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(
+                    f"{self.searxng_url}/search",
+                    params={
+                        "q": query,
+                        "format": "json",
+                        "language": lang,
+                        "pageno": 1,
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
 
+            raw = data.get("results", [])[:num_results]
             results = []
             for item in raw:
                 results.append(
                     {
                         "title": item.get("title", ""),
-                        "url": item.get("href", ""),
-                        "snippet": item.get("body", ""),
+                        "url": item.get("url", ""),
+                        "snippet": item.get("content", ""),
                     }
                 )
-
             return {"results": results, "total": len(results), "query": query}
         except Exception as e:
-            logger.error(f"DuckDuckGo search failed: {e}")
+            logger.error(f"SearXNG search failed: {e}")
+            return {"error": str(e), "query": query}
+
+    async def _search_brave(
+        self, query: str, num_results: int, language: str
+    ) -> dict:
+        try:
+            lang_map = {"zh-TW": "zh-tw", "ja": "ja-jp", "en": "en-us"}
+            market = lang_map.get(language, "en-us")
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(
+                    "https://api.search.brave.com/res/v1/web/search",
+                    params={
+                        "q": query,
+                        "count": num_results,
+                        "search_lang": market,
+                    },
+                    headers={
+                        "X-Subscription-Token": "BSAXko4yTAHbceq9Koj5tKetnKlkYaP",
+                        "Accept": "application/json",
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+            raw = data.get("web", {}).get("results", [])[:num_results]
+            results = []
+            for item in raw:
+                results.append(
+                    {
+                        "title": item.get("title", ""),
+                        "url": item.get("url", ""),
+                        "snippet": item.get("description", ""),
+                    }
+                )
+            return {"results": results, "total": len(results), "query": query}
+        except Exception as e:
+            logger.error(f"Brave search failed: {e}")
             return {"error": str(e), "query": query}
 
     async def fetch_page_content(self, url: str) -> dict:
         try:
-            import httpx
-
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(url)
                 response.raise_for_status()
