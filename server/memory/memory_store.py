@@ -1,5 +1,6 @@
 import logging
 import json
+import re
 import aiosqlite
 from datetime import datetime
 from typing import Optional
@@ -8,7 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryStore:
-    def __init__(self, db_path: str = "server/memory/memories.db", use_embeddings: bool = True):
+    def __init__(
+        self, db_path: str = "server/memory/memories.db", use_embeddings: bool = True
+    ):
         self.db_path = db_path
         self.use_embeddings = use_embeddings
         self._encoder = None
@@ -32,16 +35,22 @@ class MemoryStore:
         if self.use_embeddings:
             try:
                 from sentence_transformers import SentenceTransformer
-                self._encoder = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+
+                self._encoder = SentenceTransformer(
+                    "paraphrase-multilingual-MiniLM-L12-v2"
+                )
                 logger.info("Embedding model loaded for memory search")
             except ImportError:
-                logger.warning("sentence-transformers not installed, falling back to keyword search")
+                logger.warning(
+                    "sentence-transformers not installed, falling back to keyword search"
+                )
                 self.use_embeddings = False
 
     def _encode(self, text: str) -> Optional[bytes]:
         if self._encoder is None:
             return None
         import numpy as np
+
         vec = self._encoder.encode(text, normalize_embeddings=True)
         return vec.astype(np.float32).tobytes()
 
@@ -61,12 +70,17 @@ class MemoryStore:
 
     async def _search_vector(self, query: str, limit: int) -> list[dict]:
         import numpy as np
-        query_vec = self._encoder.encode(query, normalize_embeddings=True).astype(np.float32)
+
+        query_vec = self._encoder.encode(query, normalize_embeddings=True).astype(
+            np.float32
+        )
 
         results = []
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT * FROM memories WHERE embedding IS NOT NULL") as cursor:
+            async with db.execute(
+                "SELECT * FROM memories WHERE embedding IS NOT NULL"
+            ) as cursor:
                 async for row in cursor:
                     mem_vec = np.frombuffer(row["embedding"], dtype=np.float32)
                     score = float(np.dot(query_vec, mem_vec))
@@ -84,7 +98,9 @@ class MemoryStore:
         words = query.lower().split()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT * FROM memories ORDER BY importance DESC, created_at DESC") as cursor:
+            async with db.execute(
+                "SELECT * FROM memories ORDER BY importance DESC, created_at DESC"
+            ) as cursor:
                 all_mems = [dict(row) async for row in cursor]
 
         scored = []
@@ -128,7 +144,9 @@ class MemoryStore:
                 row = await cursor.fetchone()
                 return row[0]
 
-    async def extract_from_conversation(self, user_msg: str, assistant_msg: str, llm_client):
+    async def extract_from_conversation(
+        self, user_msg: str, assistant_msg: str, llm_client
+    ):
         prompt = f"""從這段對話中提取值得記住的資訊。
 只輸出 JSON array，每個元素: {{"content": "...", "category": "...", "importance": 0.0-1.0}}
 category 必須是: user_preference | event | fact | emotion | habit
@@ -138,11 +156,17 @@ category 必須是: user_preference | event | fact | emotion | habit
 用戶：{user_msg}
 AI：{assistant_msg}"""
         try:
-            result = await llm_client.chat([{"role": "user", "content": prompt}], think=False)
+            result = await llm_client.chat(
+                [{"role": "user", "content": prompt}], think=False
+            )
             cleaned = result.strip()
-            if cleaned.startswith("```"):
-                lines = cleaned.split("\n")
-                cleaned = "\n".join(lines[1:-1])
+            code_block = re.search(r"```(?:json)?\s*\n(.*?)\n```", cleaned, re.DOTALL)
+            if code_block:
+                cleaned = code_block.group(1)
+            elif cleaned.find("[") >= 0:
+                cleaned = cleaned[cleaned.find("[") : cleaned.rfind("]") + 1]
+            elif cleaned.find("{") >= 0:
+                cleaned = cleaned[cleaned.find("{") : cleaned.rfind("}") + 1]
             memories = json.loads(cleaned)
             if not isinstance(memories, list):
                 return

@@ -25,8 +25,36 @@ class TTSEngine:
             await self._init_cosyvoice()
         elif self.provider == "gpt_sovits":
             await self._init_gpt_sovits()
+        elif self.provider == "voicebox":
+            await self._init_voicebox()
         else:
             raise ValueError(f"Unsupported TTS provider: {self.provider}")
+
+    async def _init_voicebox(self):
+        """Test Voicebox API connection."""
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"{self.config.voicebox_api_url}/profiles")
+                if resp.status_code == 200:
+                    profiles = resp.json()
+                    logger.info(
+                        f"Voicebox connected: {len(profiles)} profiles available"
+                    )
+                    if self.config.voicebox_profile_id:
+                        logger.info(
+                            f"Using voice profile: {self.config.voicebox_profile_id}"
+                        )
+                    else:
+                        logger.warning(
+                            "No voicebox_profile_id set, using default voice"
+                        )
+                else:
+                    logger.warning(f"Voicebox returned {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"Voicebox not available: {e}")
+            self._model = None
 
     async def _init_cosyvoice(self):
         try:
@@ -48,7 +76,11 @@ class TTSEngine:
             logger.warning("GPT-SoVITS not installed, using mock TTS")
             self._model = None
 
-    async def synthesize(self, text: str, language: str = "zh-TW") -> tuple[str, list[dict]]:
+    async def synthesize(
+        self, text: str, language: str = "zh-TW"
+    ) -> tuple[str, list[dict]]:
+        if self.provider == "voicebox":
+            return await self._synthesize_voicebox(text, language)
         if not self._model:
             return await self._mock_synthesize(text, language)
 
@@ -83,7 +115,74 @@ class TTSEngine:
             logger.error(f"TTS synthesis failed: {e}")
             return await self._mock_synthesize(text, language)
 
-    async def _mock_synthesize(self, text: str, language: str = "zh-TW") -> tuple[str, list[dict]]:
+    async def _synthesize_voicebox(
+        self, text: str, language: str = "zh-TW"
+    ) -> tuple[str, list[dict]]:
+        """Synthesize speech using Voicebox API."""
+        import uuid
+        import shutil
+
+        output_filename = f"{uuid.uuid4()}.wav"
+        output_path = self.output_dir / output_filename
+
+        lang_map = {"zh-TW": "zh", "ja": "ja", "en": "en"}
+        lang = lang_map.get(language, "en")
+
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(
+                    f"{self.config.voicebox_api_url}/generate",
+                    json={
+                        "text": text,
+                        "profile_id": self.config.voicebox_profile_id or "",
+                        "language": lang,
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+                # Voicebox returns audio_path (relative to backend dir)
+                if "audio_path" in data:
+                    source = Path(data["audio_path"])
+                    if not source.is_absolute():
+                        source = Path("/home/wilsao6666/voicebox/backend") / source
+                    if source.exists():
+                        shutil.copy2(str(source), str(output_path))
+                    else:
+                        # Try downloading via API
+                        audio_resp = await client.get(
+                            f"{self.config.voicebox_api_url}/audio/{source.name}"
+                        )
+                        if audio_resp.status_code == 200:
+                            with open(output_path, "wb") as f:
+                                f.write(audio_resp.content)
+                        else:
+                            raise FileNotFoundError(f"Audio file not found: {source}")
+                elif "audio_url" in data:
+                    audio_resp = await client.get(
+                        f"{self.config.voicebox_api_url}{data['audio_url']}"
+                    )
+                    audio_resp.raise_for_status()
+                    with open(output_path, "wb") as f:
+                        f.write(audio_resp.content)
+                else:
+                    raise ValueError(
+                        f"Unexpected Voicebox response: {list(data.keys())}"
+                    )
+
+            logger.info(f"Voicebox TTS synthesized: {output_filename}")
+            visemes = self._generate_visemes_from_audio(str(output_path), text)
+            return output_filename, visemes
+
+        except Exception as e:
+            logger.error(f"Voicebox synthesis failed: {e}")
+            return await self._mock_synthesize(text, language)
+
+    async def _mock_synthesize(
+        self, text: str, language: str = "zh-TW"
+    ) -> tuple[str, list[dict]]:
         import uuid
         import struct
 
@@ -96,55 +195,72 @@ class TTSEngine:
 
         with open(output_path, "wb") as f:
             data_size = num_samples * 2  # 16-bit samples
-            f.write(b'RIFF')
-            f.write(struct.pack('<I', 36 + data_size))
-            f.write(b'WAVE')
-            f.write(b'fmt ')
-            f.write(struct.pack('<I', 16))
-            f.write(struct.pack('<H', 1))
-            f.write(struct.pack('<H', 1))
-            f.write(struct.pack('<I', sample_rate))
-            f.write(struct.pack('<I', sample_rate * 2))
-            f.write(struct.pack('<H', 2))
-            f.write(struct.pack('<H', 16))
-            f.write(b'data')
-            f.write(struct.pack('<I', data_size))
-            f.write(b'\x00' * data_size)
+            f.write(b"RIFF")
+            f.write(struct.pack("<I", 36 + data_size))
+            f.write(b"WAVE")
+            f.write(b"fmt ")
+            f.write(struct.pack("<I", 16))
+            f.write(struct.pack("<H", 1))
+            f.write(struct.pack("<H", 1))
+            f.write(struct.pack("<I", sample_rate))
+            f.write(struct.pack("<I", sample_rate * 2))
+            f.write(struct.pack("<H", 2))
+            f.write(struct.pack("<H", 16))
+            f.write(b"data")
+            f.write(struct.pack("<I", data_size))
+            f.write(b"\x00" * data_size)
 
         logger.warning(f"Using mock TTS output (silence generated): {output_filename}")
         return output_filename, []
 
-    def _generate_visemes_from_audio(self, audio_path: str, text: str = "") -> list[dict]:
+    def _generate_visemes_from_audio(
+        self, audio_path: str, text: str = ""
+    ) -> list[dict]:
         """Generate viseme data from audio file and text using a phoneme map."""
         PHONEME_VISEME_MAP = {
-            'a': 'aa', 'o': 'oh', 'u': 'ou', 'e': 'ee', 'i': 'ih',
-            'b': 'oh', 'p': 'oh', 'm': 'oh',
-            'f': 'ih', 'v': 'ih',
-            's': 'ee', 'z': 'ee', 'sh': 'ee',
-            't': 'ih', 'd': 'ih', 'n': 'ih', 'l': 'ih',
-            'k': 'aa', 'g': 'aa',
-            'r': 'oh', 'w': 'ou', 'y': 'ee',
+            "a": "aa",
+            "o": "oh",
+            "u": "ou",
+            "e": "ee",
+            "i": "ih",
+            "b": "oh",
+            "p": "oh",
+            "m": "oh",
+            "f": "ih",
+            "v": "ih",
+            "s": "ee",
+            "z": "ee",
+            "sh": "ee",
+            "t": "ih",
+            "d": "ih",
+            "n": "ih",
+            "l": "ih",
+            "k": "aa",
+            "g": "aa",
+            "r": "oh",
+            "w": "ou",
+            "y": "ee",
         }
-        
+
         try:
             import wave
             import struct
 
-            with wave.open(audio_path, 'r') as wf:
+            with wave.open(audio_path, "r") as wf:
                 n_frames = wf.getnframes()
                 framerate = wf.getframerate()
                 raw = wf.readframes(n_frames)
-                samples = struct.unpack(f'<{n_frames}h', raw)
+                samples = struct.unpack(f"<{n_frames}h", raw)
 
             chunk_size = max(1, framerate // 20)  # ~50ms windows
             visemes = []
-            mouth_shapes = ['aa', 'oh', 'ee', 'ih', 'ou']
-            
+            mouth_shapes = ["aa", "oh", "ee", "ih", "ou"]
+
             # Map text to shape indices
             text_chars = [c.lower() for c in text if c.lower() in PHONEME_VISEME_MAP]
 
             for i in range(0, len(samples), chunk_size):
-                chunk = samples[i:i + chunk_size]
+                chunk = samples[i : i + chunk_size]
                 if not chunk:
                     break
                 amplitude = sum(abs(s) for s in chunk) / len(chunk) / 32768.0
@@ -154,19 +270,23 @@ class TTSEngine:
                     continue
 
                 weight = min(1.0, amplitude * 5)
-                
+
                 if text_chars:
-                    char_idx = min(int((i / len(samples)) * len(text_chars)), len(text_chars) - 1)
-                    mapped_shape = PHONEME_VISEME_MAP.get(text_chars[char_idx], 'aa')
+                    char_idx = min(
+                        int((i / len(samples)) * len(text_chars)), len(text_chars) - 1
+                    )
+                    mapped_shape = PHONEME_VISEME_MAP.get(text_chars[char_idx], "aa")
                 else:
                     shape_idx = (i // chunk_size) % len(mouth_shapes)
                     mapped_shape = mouth_shapes[shape_idx]
 
-                visemes.append({
-                    'time': round(time_sec, 3),
-                    'viseme': mapped_shape,
-                    'weight': round(weight, 2),
-                })
+                visemes.append(
+                    {
+                        "time": round(time_sec, 3),
+                        "viseme": mapped_shape,
+                        "weight": round(weight, 2),
+                    }
+                )
 
             return visemes
         except Exception as e:

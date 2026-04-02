@@ -16,7 +16,8 @@ class LLMClient:
         self.config = config
         self.base_url = config.base_url
         self.model = config.model
-        self.client = httpx.AsyncClient(timeout=120.0)
+        self.client = httpx.AsyncClient(timeout=300.0)
+        self._is_ollama = "11434" in self.base_url or "9090" in self.base_url
 
     async def chat(
         self,
@@ -27,45 +28,100 @@ class LLMClient:
         stream: bool = False,
         think: bool = True,
     ) -> str | dict | AsyncGenerator[str, None]:
-        """Chat with the LLM.
+        if self._is_ollama:
+            return await self._ollama_chat(
+                messages, tools, temperature, max_tokens, stream, think
+            )
+        return await self._openai_chat(messages, tools, temperature, max_tokens, stream)
 
-        Returns:
-        - str: when no tools provided, returns content string
-        - dict: when tools provided AND LLM returns tool_calls,
-                returns {"content": "...", "tool_calls": [...]}
-        - str: when tools provided but no tool_calls, returns content string
-        - AsyncGenerator: when stream=True
-        """
-        processed_messages = self._apply_think_mode(messages, think)
-
+    async def _ollama_chat(
+        self, messages, tools, temperature, max_tokens, stream, think
+    ):
+        # num_predict includes thinking tokens, so add buffer
+        # Qwen3.5 still thinks even with think=False (~500-1000 tokens)
+        predict = max_tokens or 1024
+        if not think:
+            predict += 1024  # thinking overhead buffer
+        options = {
+            "think": think,
+            "num_ctx": 4096,
+            "num_predict": predict,
+        }
+        if temperature:
+            options["temperature"] = temperature
         payload = {
             "model": self.model,
-            "messages": processed_messages,
+            "messages": messages,
+            "stream": stream,
+            "options": options,
+        }
+        if tools:
+            payload["tools"] = tools
+
+        if stream:
+            return self._ollama_stream(payload)
+        return await self._ollama_complete(payload)
+
+    async def _ollama_complete(self, payload: dict) -> str | dict:
+        last_error = None
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                response = await self.client.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+                message = data.get("message", {})
+                content = message.get("content", "")
+                if message.get("tool_calls"):
+                    return {"content": content, "tool_calls": message["tool_calls"]}
+                return content
+            except (
+                httpx.HTTPStatusError,
+                httpx.TimeoutException,
+                httpx.ConnectError,
+            ) as e:
+                last_error = e
+                logger.warning(f"Ollama request failed (attempt {attempt + 1}): {e}")
+                if attempt < self.MAX_RETRIES - 1:
+                    await asyncio.sleep(self.RETRY_DELAYS[attempt])
+        raise last_error or Exception("LLM request failed after all retries")
+
+    async def _ollama_stream(self, payload: dict) -> AsyncGenerator[str, None]:
+        try:
+            async with self.client.stream(
+                "POST",
+                f"{self.base_url}/api/chat",
+                json=payload,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    chunk = json.loads(line)
+                    content = chunk.get("message", {}).get("content", "")
+                    if content:
+                        yield content
+        except Exception as e:
+            logger.error(f"Ollama stream failed: {e}")
+            raise
+
+    async def _openai_chat(self, messages, tools, temperature, max_tokens, stream):
+        payload = {
+            "model": self.model,
+            "messages": messages,
             "temperature": temperature or self.config.temperature,
             "max_tokens": max_tokens or self.config.max_tokens,
             "stream": stream,
         }
         if tools:
             payload["tools"] = tools
-
         if stream:
-            return self._stream_response(payload)
-        else:
-            return await self._complete_response(payload, has_tools=tools is not None)
+            return self._openai_stream(payload)
+        return await self._openai_complete(payload)
 
-    def _apply_think_mode(self, messages: list[dict], think: bool) -> list[dict]:
-        """Add /no_think to system prompt if think=False."""
-        if think:
-            return messages
-        result = []
-        for msg in messages:
-            if msg["role"] == "system":
-                result.append({**msg, "content": msg["content"] + "\n/no_think"})
-            else:
-                result.append(msg)
-        return result
-
-    async def _complete_response(self, payload: dict, has_tools: bool = False) -> str | dict:
+    async def _openai_complete(self, payload: dict) -> str | dict:
         last_error = None
         for attempt in range(self.MAX_RETRIES):
             try:
@@ -76,28 +132,23 @@ class LLMClient:
                 response.raise_for_status()
                 data = response.json()
                 message = data["choices"][0]["message"]
-
-                if has_tools and message.get("tool_calls"):
+                if message.get("tool_calls"):
                     return {
                         "content": message.get("content", ""),
                         "tool_calls": message["tool_calls"],
                     }
                 return message.get("content", "")
-
             except httpx.HTTPStatusError as e:
                 if e.response.status_code < 500:
                     raise
                 last_error = e
-                logger.warning(f"LLM request failed (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}")
             except (httpx.TimeoutException, httpx.ConnectError) as e:
                 last_error = e
-                logger.warning(f"LLM request failed (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}")
             if attempt < self.MAX_RETRIES - 1:
                 await asyncio.sleep(self.RETRY_DELAYS[attempt])
-        logger.error(f"LLM request failed after {self.MAX_RETRIES} attempts: {last_error}")
-        raise last_error
+        raise last_error or Exception("LLM request failed after all retries")
 
-    async def _stream_response(self, payload: dict) -> AsyncGenerator[str, None]:
+    async def _openai_stream(self, payload: dict) -> AsyncGenerator[str, None]:
         try:
             async with self.client.stream(
                 "POST",
@@ -115,34 +166,31 @@ class LLMClient:
                         if content:
                             yield content
         except Exception as e:
-            logger.error(f"LLM stream request failed: {e}")
+            logger.error(f"OpenAI stream failed: {e}")
             raise
 
-    async def generate_3d_model_prompt(self, image_description: str) -> str:
-        prompt = f"""
-        Based on this character description, generate a detailed 3D model specification:
-        {image_description}
-
-        Please provide:
-        1. Body proportions and measurements
-        2. Hair style, color, and details
-        3. Eye shape, color, and expression
-        4. Clothing/outfit details
-        5. Accessories and props
-        6. Pose and expression
-        7. Color palette
-        """
-        return await self.chat([{"role": "user", "content": prompt}])
-
-    async def translate(self, text: str, target_lang: str) -> str:
-        lang_map = {
-            "zh-TW": "Traditional Chinese",
-            "ja": "Japanese",
-            "en": "English",
-        }
-        target = lang_map.get(target_lang, target_lang)
-        prompt = f"Translate the following text to {target}:\n{text}"
-        return await self.chat([{"role": "user", "content": prompt}])
+    async def switch_model(self, new_model: str):
+        old_model = self.model
+        if old_model and self._is_ollama:
+            try:
+                await self.client.post(
+                    f"{self.base_url}/api/generate",
+                    json={"model": old_model, "keep_alive": 0},
+                )
+                logger.info(f"Unloaded model: {old_model}")
+            except Exception as e:
+                logger.warning(f"Failed to unload {old_model}: {e}")
+        self.model = new_model
+        if self._is_ollama:
+            try:
+                await self.client.post(
+                    f"{self.base_url}/api/generate",
+                    json={"model": new_model, "prompt": "OK", "stream": False},
+                )
+                logger.info(f"Loaded model: {new_model}")
+            except Exception as e:
+                logger.error(f"Failed to load {new_model}: {e}")
+                raise
 
     async def close(self):
         await self.client.aclose()

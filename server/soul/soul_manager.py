@@ -34,7 +34,9 @@ class SoulManager:
         if profile:
             parts.append(f"\n## User Profile\n{profile}")
         parts.append(f"\n{lang_instruction}")
-        parts.append("\n回覆最後一行加 [emotion:TAG]，TAG: happy/sad/angry/surprised/relaxed/neutral")
+        parts.append(
+            "\n回覆最後一行加 [emotion:TAG]，TAG: happy/sad/angry/surprised/relaxed/neutral"
+        )
 
         return "\n".join(parts)
 
@@ -42,13 +44,15 @@ class SoulManager:
         base = self.get_chat_prompt(language)
         return f"""{base}
 
-## Assist Mode Rules
-你正在協助模式。使用提供的工具來幫助用戶。
-- 分析用戶的需求，選擇合適的工具
-- 生成完整的工具參數（例如 file_write 要生成完整檔案內容）
-- 如果需要多個步驟，列出所有需要的工具調用
-- 不要假裝執行了工具，系統會真正執行
-- 回覆時先簡要說明你打算做什麼"""
+## Assist Mode Rules (ReAct Pattern)
+You are in assist mode. Use the provided tools to help the user.
+- CRITICAL: Tool arguments must contain Content YOU generate, NOT the user's original message
+  - Example: user says "write a to-do list" -> file_write content must be your generated list
+  - Example: user says "send email to boss" -> email_send body must be your composed email
+- If you need to call multiple tools, call them ALL in one response
+- Do not pretend to execute tools, the system will actually execute them
+- After tool results, you will be asked to summarize — keep it brief and warm
+- Reply in the last line with [emotion:TAG] where TAG: happy/sad/angry/surprised/relaxed/neutral"""
 
     def update_soul(self, content: str):
         path = self.soul_dir / "SOUL.md"

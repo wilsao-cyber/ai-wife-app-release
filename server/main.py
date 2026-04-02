@@ -8,13 +8,14 @@ from fastapi import (
     HTTPException,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import asyncio
 import logging
+import time
 from typing import Optional
 
-from config import config, load_config
+from config import config, resolve_model, MODEL_PRESETS
 from llm_client import LLMClient
 from tts_engine import TTSEngine
 from stt_engine import STTEngine
@@ -25,8 +26,13 @@ from vision_analyzer import VisionAnalyzer
 from soul.soul_manager import SoulManager
 from memory.memory_store import MemoryStore
 from skills.registry import SkillRegistry
+from heartbeat.scheduler import HeartbeatScheduler
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
 logger = logging.getLogger(__name__)
 
 ws_manager = WebSocketManager()
@@ -36,35 +42,148 @@ stt_engine: Optional[STTEngine] = None
 agent: Optional[AgentOrchestrator] = None
 vrm_manager = VrmManager()
 vision_analyzer = VisionAnalyzer()
+heartbeat: Optional[HeartbeatScheduler] = None
+
+# ── Startup Progress Tracker ─────────────────────────────────────────
+
+
+class StartupProgress:
+    """Track and display startup phase progress with timestamps."""
+
+    def __init__(self):
+        self.start_time = time.time()
+        self.phases = []
+
+    def begin(self, name: str):
+        logger.info(f"  → {name}...")
+        self.phases.append({"name": name, "start": time.time(), "status": "running"})
+
+    def ok(self, detail: str = ""):
+        if self.phases and self.phases[-1]["status"] == "running":
+            elapsed = time.time() - self.phases[-1]["start"]
+            self.phases[-1]["status"] = "OK"
+            self.phases[-1]["elapsed"] = elapsed
+            msg = f"  ✓ {self.phases[-1]['name']} OK ({elapsed:.1f}s)"
+            if detail:
+                msg += f" — {detail}"
+            logger.info(msg)
+
+    def fail(self, detail: str = ""):
+        if self.phases and self.phases[-1]["status"] == "running":
+            elapsed = time.time() - self.phases[-1]["start"]
+            self.phases[-1]["status"] = "FAILED"
+            self.phases[-1]["elapsed"] = elapsed
+            msg = f"  ✗ {self.phases[-1]['name']} FAILED ({elapsed:.1f}s)"
+            if detail:
+                msg += f" — {detail}"
+            logger.warning(msg)
+
+    def skip(self, detail: str = ""):
+        if self.phases and self.phases[-1]["status"] == "running":
+            elapsed = time.time() - self.phases[-1]["start"]
+            self.phases[-1]["status"] = "SKIPPED"
+            self.phases[-1]["elapsed"] = elapsed
+            msg = f"  ⊘ {self.phases[-1]['name']} SKIPPED ({elapsed:.1f}s)"
+            if detail:
+                msg += f" — {detail}"
+            logger.info(msg)
+
+    def summary(self):
+        total = time.time() - self.start_time
+        ok_count = sum(1 for p in self.phases if p["status"] == "OK")
+        fail_count = sum(1 for p in self.phases if p["status"] == "FAILED")
+        skip_count = sum(1 for p in self.phases if p["status"] == "SKIPPED")
+        logger.info("=" * 60)
+        logger.info(f"Startup complete in {total:.1f}s")
+        logger.info(f"  {ok_count} OK, {fail_count} FAILED, {skip_count} SKIPPED")
+        for p in self.phases:
+            status_icon = {"OK": "✓", "FAILED": "✗", "SKIPPED": "⊘"}.get(
+                p["status"], "?"
+            )
+            logger.info(f"  {status_icon} {p['name']:<25s} {p.get('elapsed', 0):.1f}s")
+        logger.info("=" * 60)
+
+
+progress = StartupProgress()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global llm_client, tts_engine, stt_engine, agent
+    global llm_client, tts_engine, stt_engine, agent, heartbeat
 
-    logger.info("Initializing AI Wife Server...")
+    logger.info("=" * 60)
+    logger.info("AI Wife Server — Starting up")
+    logger.info("=" * 60)
 
+    # Phase 1: LLM Client
+    progress.begin("LLM Client")
     llm_client = LLMClient(config.llm)
-    tts_engine = TTSEngine(config.tts)
-    stt_engine = STTEngine(config.stt)
+    actual_model = resolve_model(config.llm.model)
+    progress.ok(f"{config.llm.provider} @ {config.llm.base_url} [{actual_model}]")
 
-    # Soul system
+    # Phase 1b: Test LLM connectivity (skip during fast startup)
+    progress.begin("LLM Test Reply")
+    try:
+        await asyncio.sleep(0.1)  # brief pause
+        test_reply = await llm_client.chat(
+            [{"role": "user", "content": "回覆OK"}],
+            think=False,
+        )
+        progress.ok(f"reply: {test_reply[:50]}")
+    except Exception as e:
+        progress.skip(f"{str(e)[:60]}")
+
+    # Phase 2: TTS Engine
+    progress.begin("TTS Engine")
+    tts_engine = TTSEngine(config.tts)
+    try:
+        await tts_engine.initialize()
+        progress.ok(f"{config.tts.provider}")
+    except Exception as e:
+        progress.fail(str(e))
+
+    # Phase 3: STT Engine
+    progress.begin("STT Engine")
+    stt_engine = STTEngine(config.stt)
+    try:
+        await stt_engine.initialize()
+        progress.ok(f"{config.stt.provider}")
+    except Exception as e:
+        progress.fail(str(e))
+
+    # Phase 4: Soul System
+    progress.begin("Soul System")
     soul_dir = str(config.soul.soul_path).rsplit("/", 1)[0]
     soul_manager = SoulManager(soul_dir=soul_dir)
+    soul_text = soul_manager.load_soul()
+    progress.ok(f"SOUL.md loaded ({len(soul_text)} chars)")
 
-    # Memory system
+    # Phase 5: Memory System
+    progress.begin("Memory System")
     memory_store = MemoryStore(
         db_path=config.memory.db_path,
         use_embeddings=config.memory.use_embeddings,
     )
-    await memory_store.initialize()
+    try:
+        await memory_store.initialize()
+        count = await memory_store.count()
+        progress.ok(f"{count} memories in DB")
+    except Exception as e:
+        progress.fail(str(e))
 
-    # Skill system — auto-discover builtin skills
+    # Phase 6: Skill System
+    progress.begin("Skill System")
     skill_registry = SkillRegistry()
     skill_registry.discover("skills/builtin")
-    await skill_registry.initialize_all()
+    try:
+        await skill_registry.initialize_all()
+        tools = skill_registry.get_tool_definitions()
+        progress.ok(f"{len(tools)} tools registered")
+    except Exception as e:
+        progress.fail(str(e))
 
-    # Wire everything into the agent
+    # Phase 7: Agent Orchestration
+    progress.begin("Agent Orchestration")
     agent = AgentOrchestrator(
         llm_client=llm_client,
         config=config,
@@ -72,21 +191,29 @@ async def lifespan(app: FastAPI):
         soul_manager=soul_manager,
         memory_store=memory_store,
     )
+    progress.ok("wired")
 
-    try:
-        await tts_engine.initialize()
-    except Exception as e:
-        logger.warning(f"TTS engine initialization failed (non-critical): {e}")
+    # Phase 8: Heartbeat
+    if config.heartbeat.enabled:
+        progress.begin("Heartbeat Scheduler")
+        try:
+            heartbeat = HeartbeatScheduler(md_path=config.heartbeat.config_path)
+            heartbeat.set_agent(agent)
+            heartbeat.start()
+            progress.ok("running")
+        except Exception as e:
+            progress.fail(str(e))
+    else:
+        progress.begin("Heartbeat Scheduler")
+        progress.skip("disabled in config")
 
-    try:
-        await stt_engine.initialize()
-    except Exception as e:
-        logger.warning(f"STT engine initialization failed (non-critical): {e}")
-
+    progress.summary()
     logger.info(f"Server running on {config.host}:{config.port}")
 
     yield
 
+    if heartbeat:
+        heartbeat.stop()
     logger.info("Shutting down AI Wife Server...")
 
 
@@ -108,6 +235,7 @@ app.add_middleware(
 
 # --- WebSocket ---
 
+
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
     await ws_manager.connect(websocket, client_id)
@@ -128,7 +256,10 @@ async def handle_message(data: dict, client_id: str) -> dict:
     elif msg_type == "voice_input":
         return await handle_voice_input(data, client_id)
     elif msg_type == "confirm":
-        return {"type": "confirm_started", "message": "Use SSE endpoint for streaming confirmation"}
+        return {
+            "type": "confirm_started",
+            "message": "Use SSE endpoint for streaming confirmation",
+        }
     elif msg_type == "deny":
         language = data.get("language", config.languages.default)
         result = await agent.deny_plan(client_id, language)
@@ -176,6 +307,7 @@ async def handle_voice_input(data: dict, client_id: str) -> dict:
 
 # --- Chat API (REST) ---
 
+
 @app.post("/api/chat")
 async def api_chat(data: dict):
     message = data.get("message", "")
@@ -190,9 +322,12 @@ async def api_chat_stream(data: dict):
     message = data.get("message", "")
     language = data.get("language", config.languages.default)
     client_id = data.get("client_id", "default")
+    mode_override = data.get("mode_override")
 
     async def event_generator():
-        async for chunk_json in agent.chat_stream(message, language, client_id):
+        async for chunk_json in agent.chat_stream(
+            message, language, client_id, mode_override=mode_override
+        ):
             yield f"data: {chunk_json}\n\n"
 
     return StreamingResponse(
@@ -203,6 +338,7 @@ async def api_chat_stream(data: dict):
 
 
 # --- Confirmation Flow ---
+
 
 @app.post("/api/chat/confirm/{client_id}")
 async def confirm_plan(client_id: str):
@@ -225,6 +361,7 @@ async def deny_plan(client_id: str, data: dict = {}):
 
 # --- Memory Management ---
 
+
 @app.get("/api/memory/list")
 async def list_memories(limit: int = 50):
     memories = await agent.memory.list_all(limit=limit)
@@ -238,6 +375,7 @@ async def delete_memory(memory_id: int):
 
 
 # --- Soul/Personality ---
+
 
 @app.get("/api/soul")
 async def get_soul():
@@ -258,6 +396,7 @@ async def update_soul(data: dict):
 
 # --- TTS / STT ---
 
+
 @app.post("/api/stt")
 async def api_stt(audio: UploadFile = File(...)):
     audio_data = await audio.read()
@@ -270,7 +409,8 @@ async def api_tts(data: dict):
     text = data.get("text", "")
     language = data.get("language", config.languages.default)
     audio_path, _ = await tts_engine.synthesize(text, language)
-    return FileResponse(audio_path, media_type="audio/wav")
+    full_path = f"./output/audio/{audio_path}"
+    return FileResponse(full_path, media_type="audio/wav")
 
 
 @app.get("/audio/{filename}")
@@ -285,6 +425,7 @@ async def get_model(filename: str):
 
 # --- Static / Web UI ---
 
+
 @app.get("/")
 async def web_index():
     return FileResponse("static/index.html", media_type="text/html")
@@ -294,6 +435,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # --- Health ---
+
 
 @app.get("/health")
 async def health_check():
@@ -309,7 +451,157 @@ async def health_check():
     }
 
 
+@app.get("/api/health/test")
+async def health_test():
+    """Run connectivity tests for all components."""
+    results = {}
+
+    # Test LLM
+    try:
+        t0 = time.time()
+        reply = await llm_client.chat(
+            [{"role": "user", "content": "回覆OK"}],
+            think=False,
+            max_tokens=10,
+        )
+        latency = int((time.time() - t0) * 1000)
+        results["llm"] = {
+            "ok": True,
+            "model": llm_client.model,
+            "latency_ms": latency,
+            "reply": str(reply)[:30],
+        }
+    except Exception as e:
+        results["llm"] = {"ok": False, "error": str(e)[:100]}
+
+    # Test TTS
+    try:
+        await tts_engine.synthesize("測試", "zh-TW")
+        results["tts"] = {"ok": True, "provider": config.tts.provider}
+    except Exception as e:
+        results["tts"] = {"ok": False, "error": str(e)[:100]}
+
+    # Test STT
+    try:
+        results["stt"] = {"ok": True, "provider": config.stt.provider}
+    except Exception as e:
+        results["stt"] = {"ok": False, "error": str(e)[:100]}
+
+    # Test Skills
+    try:
+        tools = agent.skills.get_tool_definitions()
+        results["skills"] = {"ok": True, "tool_count": len(tools)}
+    except Exception as e:
+        results["skills"] = {"ok": False, "error": str(e)[:100]}
+
+    return results
+
+
+@app.post("/api/config/model")
+async def switch_model(data: dict):
+    preset = data.get("model", "")
+    actual = resolve_model(preset)
+    try:
+        await llm_client.switch_model(actual)
+        config.llm.model = actual
+        return {"success": True, "model": actual, "preset": preset}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/config/models")
+async def list_models():
+    labels = {
+        "smart7": "Qwen 2.5 7B（快速）",
+        "smart9": "Qwen 3.5 9B（平衡）",
+        "ultra": "Qwen 3.5 27B（高品質）",
+    }
+    models = [
+        {"preset": k, "actual": v, "label": labels.get(k, k)}
+        for k, v in MODEL_PRESETS.items()
+        if k in ("smart7", "smart9", "ultra")
+    ]
+    return {"models": models, "current": config.llm.model}
+
+
+@app.get("/api/health")
+async def api_health():
+    """Detailed health check for startup screen."""
+    components = {}
+    components["llm"] = {
+        "status": "ok" if llm_client else "unavailable",
+        "model": llm_client.model if llm_client else None,
+        "base_url": config.llm.base_url,
+    }
+    components["tts"] = {
+        "status": "ok" if tts_engine else "unavailable",
+        "provider": config.tts.provider,
+    }
+    components["stt"] = {
+        "status": "ok" if stt_engine else "unavailable",
+        "provider": config.stt.provider,
+    }
+    components["email"] = {
+        "status": "ok" if agent and agent.skills else "unavailable",
+    }
+    components["calendar"] = {
+        "status": "ok" if agent and agent.skills else "unavailable",
+    }
+    if agent and agent.memory:
+        try:
+            count = await agent.memory.count()
+            components["memory"] = {"status": "ok", "count": count}
+        except Exception:
+            components["memory"] = {"status": "error"}
+    else:
+        components["memory"] = {"status": "unavailable"}
+    if agent and agent.skills:
+        tools = agent.skills.get_tool_definitions()
+        components["skills"] = {"status": "ok", "tool_count": len(tools)}
+    else:
+        components["skills"] = {"status": "unavailable"}
+    return {"status": "ready", "components": components}
+
+
+@app.post("/api/health/test")
+async def api_health_test():
+    """Run connectivity tests for startup screen."""
+    results = {}
+    # LLM test
+    if llm_client:
+        try:
+            t0 = time.time()
+            reply = await llm_client.chat(
+                [{"role": "user", "content": "回覆OK"}], think=False
+            )
+            latency = int((time.time() - t0) * 1000)
+            results["llm"] = {
+                "ok": True,
+                "reply": str(reply)[:50],
+                "latency_ms": latency,
+            }
+        except Exception as e:
+            results["llm"] = {"ok": False, "error": str(e)[:100]}
+    else:
+        results["llm"] = {"ok": False, "error": "not initialized"}
+    # TTS test
+    if tts_engine:
+        try:
+            t0 = time.time()
+            path, _ = await tts_engine.synthesize("測試", config.languages.default)
+            latency = int((time.time() - t0) * 1000)
+            results["tts"] = {"ok": bool(path), "latency_ms": latency}
+        except Exception as e:
+            results["tts"] = {"ok": False, "error": str(e)[:100]}
+    else:
+        results["tts"] = {"ok": False, "error": "not initialized"}
+    # STT test
+    results["stt"] = {"ok": stt_engine is not None}
+    return results
+
+
 # --- Legacy tool endpoints (kept for backward compat) ---
+
 
 @app.post("/api/email/{action}")
 async def api_email(action: str, data: dict = {}):
@@ -329,7 +621,34 @@ async def api_calendar(action: str, data: dict = {}):
         return {"error": str(e), "events": []}
 
 
+# --- Heartbeat ---
+
+
+@app.get("/api/heartbeat/jobs")
+async def list_heartbeat_jobs():
+    if not heartbeat:
+        return []
+    return heartbeat.list_jobs()
+
+
+@app.post("/api/heartbeat/jobs")
+async def add_or_update_heartbeat_job(data: dict):
+    if not heartbeat:
+        raise HTTPException(status_code=503, detail="Heartbeat not enabled")
+    heartbeat.add_job(data)
+    return {"success": True}
+
+
+@app.delete("/api/heartbeat/jobs/{job_id}")
+async def remove_heartbeat_job(job_id: str):
+    if not heartbeat:
+        raise HTTPException(status_code=503, detail="Heartbeat not enabled")
+    heartbeat.remove_job(job_id)
+    return {"success": True}
+
+
 # --- VRM ---
+
 
 @app.post("/api/vrm/upload")
 async def upload_vrm(file: UploadFile = File(...)):
@@ -366,10 +685,11 @@ async def delete_vrm(filename: str):
 
 # --- Vision ---
 
+
 @app.post("/api/vision/capture")
 async def vision_capture(image: UploadFile = File(...), language: str = "zh-TW"):
     image_data = await image.read()
-    result = vision_analyzer.analyze_single(image_data, language)
+    result = await vision_analyzer.analyze_single(image_data, language)
     if result.get("text"):
         audio_path, visemes = await tts_engine.synthesize(result["text"], language)
         result["audio_url"] = f"/audio/{audio_path}"
@@ -378,10 +698,17 @@ async def vision_capture(image: UploadFile = File(...), language: str = "zh-TW")
 
 
 @app.post("/api/vision/stream")
-async def vision_stream(image: UploadFile = File(...), previous_hash: str = "", language: str = "zh-TW", context: str = ""):
+async def vision_stream(
+    image: UploadFile = File(...),
+    previous_hash: str = "",
+    language: str = "zh-TW",
+    context: str = "",
+):
     image_data = await image.read()
     previous_bytes = None
-    result = vision_analyzer.analyze_stream(image_data, previous_bytes, language, context)
+    result = await vision_analyzer.analyze_stream(
+        image_data, previous_bytes, language, context
+    )
     if result is None:
         return {"changed": False}
     if result.get("text"):

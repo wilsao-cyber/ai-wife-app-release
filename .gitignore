@@ -29,6 +29,16 @@ server/.env
 server/venv/
 *.egg-info/
 
+# Secrets & tokens
+config/credentials.json
+config/*_token.json
+
+# Runtime data
+server/memory/memories.db
+output/
+server/output/
+server/models/
+
 # Models (top-level ML models directory only)
 /models/
 !/models/README.md

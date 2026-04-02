@@ -1,0 +1,31 @@
+[
+  {
+    "id": "idle",
+    "label": "待機",
+    "file": "idle.fbx",
+    "loop": true,
+    "lookAtWeight": 1,
+    "priority": 0,
+    "minIntervalMs": 120
+  },
+  {
+    "id": "wave",
+    "label": "揮手",
+    "file": "wave.fbx",
+    "loop": false,
+    "autoReturnTo": "idle",
+    "lookAtWeight": 0.6,
+    "priority": 2,
+    "minIntervalMs": 350
+  },
+  {
+    "id": "think",
+    "label": "思考",
+    "file": "think.fbx",
+    "loop": false,
+    "autoReturnTo": "idle",
+    "lookAtWeight": 0.2,
+    "priority": 1,
+    "minIntervalMs": 250
+  }
+]

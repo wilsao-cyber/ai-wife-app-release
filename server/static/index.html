@@ -44,60 +44,320 @@
   }
   @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 
+  #top-bar {
+    position: absolute; top: 12px; left: 12px;
+    display: flex; gap: 8px; z-index: 10;
+  }
+  select {
+    background: rgba(15, 52, 96, 0.8); color: white; border: 1px solid #FF69B4;
+    padding: 6px 10px; border-radius: 8px; outline: none; backdrop-filter: blur(4px);
+  }
+
   #chat-panel {
-    height: 280px; display: flex; flex-direction: column;
-    background: #16213e; border-top: 1px solid #FF69B4;
+    height: 45vh; min-height: 200px; display: flex; flex-direction: column;
+    background: #16213e; border-top: 1px solid #FF69B4; position: relative;
   }
   #messages {
     flex: 1; overflow-y: auto; padding: 12px; min-height: 0;
     display: flex; flex-direction: column; gap: 8px;
+    scroll-behavior: smooth;
   }
-  #messages::-webkit-scrollbar { width: 4px; }
-  #messages::-webkit-scrollbar-thumb { background: #FF69B4; border-radius: 2px; }
+  #messages::-webkit-scrollbar { width: 6px; }
+  #messages::-webkit-scrollbar-thumb { background: #FF69B4; border-radius: 3px; }
+
+  /* Resize handle */
+  #chat-resize-handle {
+    height: 6px; cursor: ns-resize; background: transparent; position: absolute;
+    top: -3px; left: 0; right: 0; z-index: 5;
+  }
+  #chat-resize-handle:hover { background: rgba(255,105,180,0.3); }
+
+  /* Scroll to bottom button */
+  #scroll-bottom-btn {
+    position: absolute; bottom: 60px; right: 16px; z-index: 10;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: #FF69B4; border: none; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  #scroll-bottom-btn svg { width: 20px; height: 20px; fill: white; }
+  #scroll-bottom-btn.visible { display: flex; }
+
+  /* Timing badge */
+  .timing-badge {
+    font-size: 10px; color: #888; text-align: right; margin-top: 2px;
+  }
 
   .msg { max-width: 80%; padding: 8px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5; word-wrap: break-word; }
   .msg.user { align-self: flex-end; background: #0f3460; color: #eee; border-bottom-right-radius: 4px; }
   .msg.ai { align-self: flex-start; background: #2a1f3d; color: #FFB6C1; border-bottom-left-radius: 4px; border: 1px solid rgba(255,105,180,0.2); }
   .msg.ai .emotion-tag { font-size: 11px; color: #FF69B4; margin-bottom: 2px; }
-  .msg.typing { color: #888; font-style: italic; }
+  .msg.ai .timing-badge { font-size: 10px; color: #888; margin-top: 4px; }
+  .tts-btn { display: inline-block; cursor: pointer; font-size: 16px; margin-left: 6px; opacity: 0.6; transition: opacity 0.2s; user-select: none; }
+  .tts-btn:hover { opacity: 1; }
+  .tts-btn.playing { opacity: 1; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .typing-indicator { display: inline-flex; gap: 4px; padding: 4px 0; }
+  .typing-indicator span { width: 6px; height: 6px; border-radius: 50%; background: #FF69B4; opacity: 0.4; animation: blink 1.4s infinite both; }
+  .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%,80%,100%{opacity:0.4} 40%{opacity:1} }
+  .msg.notice { align-self: center; background: rgba(255,105,180,0.1); color: #FF69B4; font-size: 12px; border: 1px dashed rgba(255,105,180,0.3); max-width: 90%; text-align: center; }
+  .msg.error { align-self: center; background: rgba(255,0,0,0.1); color: #ff6b6b; font-size: 12px; }
+
+  .plan-card {
+    background: #0f3460; border: 1px solid #4CAF50; border-radius: 8px; padding: 10px; margin-top: 6px; font-size: 13px; color: #eee;
+  }
+  .plan-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .plan-actions button { padding: 4px 12px; border: none; border-radius: 4px; cursor: pointer; color: white; }
+  .btn-confirm { background: #4CAF50; }
+  .btn-deny { background: #f44336; }
+
+  .tool-card {
+    background: #1a1a2e; border: 1px solid #666; border-radius: 8px; padding: 0; margin-top: 6px; font-size: 12px; overflow: hidden;
+  }
+  .tool-header { padding: 8px; background: rgba(255,255,255,0.05); cursor: pointer; color: #ccc; }
+  .tool-body { padding: 8px; display: none; color: #aaa; border-top: 1px solid #444; white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow-y: auto;}
+  .tool-card.expanded .tool-body { display: block; }
 
   #input-bar {
-    display: flex; gap: 8px; padding: 10px 12px;
-    background: #0f3460;
+    display: flex; gap: 8px; padding: 10px 12px; background: #0f3460; align-items: center;
   }
+  #settings-btn { background: none; border: none; font-size: 20px; cursor: pointer; opacity: 0.8; }
+  #settings-btn:hover { opacity: 1; }
   #input-bar input {
     flex: 1; padding: 10px 14px; border-radius: 20px;
     border: 1px solid rgba(255,105,180,0.4); background: #1a1a2e;
     color: #eee; font-size: 14px; outline: none;
   }
-  #input-bar input::placeholder { color: #666; }
   #input-bar input:focus { border-color: #FF69B4; }
-  #input-bar button {
+  #input-bar button#send-btn {
     width: 42px; height: 42px; border-radius: 50%;
     background: #FF69B4; border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    transition: background 0.2s;
   }
-  #input-bar button:hover { background: #ff85c8; }
-  #input-bar button:disabled { background: #555; cursor: not-allowed; }
-  #input-bar button svg { width: 20px; height: 20px; fill: white; }
+  #input-bar button#send-btn svg { width: 20px; height: 20px; fill: white; }
+
+  /* Modal */
+  #settings-modal {
+    position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100;
+  }
+  #settings-modal.hidden { display: none; }
+  .modal-content {
+    background: #16213e; width: 90%; max-width: 500px; height: 80%; border-radius: 12px;
+    border: 1px solid #FF69B4; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal-header { padding: 16px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+  .modal-header h2 { font-size: 18px; color: #FF69B4; }
+  #close-settings { background: none; border: none; color: white; font-size: 18px; cursor: pointer; }
+
+  /* Startup Screen */
+  #setup-screen {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    z-index: 1000; display: flex; align-items: center; justify-content: center;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  #setup-screen.hidden {
+    opacity: 0; pointer-events: none; transform: scale(1.05);
+  }
+  .setup-card {
+    background: rgba(22, 33, 62, 0.95); border: 1px solid rgba(255,105,180,0.3);
+    border-radius: 16px; padding: 32px; width: 90%; max-width: 420px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .setup-title {
+    text-align: center; font-size: 24px; color: #FF69B4; margin-bottom: 4px;
+  }
+  .setup-subtitle {
+    text-align: center; font-size: 13px; color: #888; margin-bottom: 24px;
+  }
+  .setup-field { margin-bottom: 16px; }
+  .setup-field label {
+    display: block; font-size: 13px; color: #FFB6C1; margin-bottom: 6px;
+  }
+  .setup-field select, .setup-field input {
+    width: 100%; padding: 10px 14px; border-radius: 10px;
+    border: 1px solid rgba(255,105,180,0.3); background: #0f3460;
+    color: #eee; font-size: 14px; outline: none;
+  }
+  .setup-field select:focus, .setup-field input:focus {
+    border-color: #FF69B4;
+  }
+  .test-btn {
+    width: 100%; padding: 12px; border-radius: 10px; border: none;
+    background: #FF69B4; color: white; font-size: 15px; cursor: pointer;
+    font-weight: bold; margin-bottom: 16px;
+  }
+  .test-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .test-btn:hover:not(:disabled) { background: #e55a9b; }
+  .test-results { margin-bottom: 16px; }
+  .test-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 0;
+    font-size: 13px; color: #ccc;
+  }
+  .test-item .status {
+    width: 20px; height: 20px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: bold;
+  }
+  .test-item .status.ok { background: #4CAF50; color: white; }
+  .test-item .status.fail { background: #f44336; color: white; }
+  .test-item .status.pending { background: #555; color: #aaa; }
+  .test-item .status.testing { background: #FF69B4; color: white; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .enter-btn {
+    width: 100%; padding: 14px; border-radius: 10px; border: none;
+    background: #4CAF50; color: white; font-size: 16px; cursor: pointer;
+    font-weight: bold; opacity: 0.3; pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .enter-btn.ready { opacity: 1; pointer-events: auto; }
+  .enter-btn:hover { background: #45a049; }
+  .setup-loading {
+    text-align: center; padding: 20px; color: #FF69B4;
+  }
+  .setup-loading .spinner {
+    width: 32px; height: 32px; border: 3px solid rgba(255,105,180,0.3);
+    border-top-color: #FF69B4; border-radius: 50%; margin: 0 auto 12px;
+    animation: spin 0.8s linear infinite;
+  }
+
+  /* Toast notification */
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: rgba(22, 33, 62, 0.95); border: 1px solid #FF69B4;
+    border-radius: 10px; padding: 10px 20px; color: #FFB6C1;
+    font-size: 14px; z-index: 2000; opacity: 0; pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  #toast.show { opacity: 1; }
+
+  /* Model switch loading overlay */
+  #model-switch-overlay {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.7); z-index: 999; display: none;
+    align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+  }
+  #model-switch-overlay.show { display: flex; }
+  #model-switch-overlay span { color: #FF69B4; font-size: 14px; }
+  .tabs { display: flex; background: #0f3460; }
+  .tab-btn { flex: 1; padding: 10px; border: none; background: none; color: #aaa; cursor: pointer; }
+  .tab-btn.active { color: #FF69B4; border-bottom: 2px solid #FF69B4; background: rgba(255,105,180,0.1); }
+  .tab-body { flex: 1; padding: 16px; overflow-y: auto; display: none; }
+  .tab-body.active { display: block; }
+  
+  #soul-editor { width: 100%; height: 85%; background: #1a1a2e; color: #eee; border: 1px solid #555; padding: 8px; border-radius: 6px; font-family: monospace; resize: none; }
+  #save-soul-btn { margin-top: 10px; width: 100%; padding: 10px; background: #FF69B4; color: white; border: none; border-radius: 6px; cursor: pointer; }
+  
+  .memory-item, .hb-item { padding: 10px; background: #1a1a2e; margin-bottom: 8px; border-radius: 6px; border: 1px solid #333; display: flex; justify-content: space-between; align-items: flex-start; }
+  .hb-item .info { flex: 1; }
+  .hb-item .cron { color: #FF69B4; font-family: monospace; font-size: 12px; }
+  .hb-item .action { font-size: 14px; margin-top: 4px; color: #eee; }
+  .hb-item button, .memory-item button { background: #f44336; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .hb-item button.btn-toggle { background: #555; }
+  .hb-item button.btn-toggle.enabled { background: #4CAF50; }
 </style>
 </head>
 <body>
 
 <div id="vrm-container">
+  <div id="top-bar">
+    <select id="mode-selector">
+      <option value="auto">自動</option>
+      <option value="chat">聊天</option>
+      <option value="assist">協助</option>
+    </select>
+    <select id="lang-selector">
+      <option value="zh-TW">繁體中文</option>
+      <option value="ja">日本語</option>
+      <option value="en">English</option>
+    </select>
+    <select id="model-selector" title="切換模型">
+      <option value="smart7">Qwen 2.5 7B</option>
+      <option value="smart9">Qwen 3.5 9B</option>
+      <option value="ultra">Qwen 3.5 27B</option>
+    </select>
+  </div>
   <div id="loading"><div class="spinner"></div><span>Loading model...</span></div>
   <div id="error"></div>
   <div id="greeting"></div>
 </div>
 
 <div id="chat-panel">
+  <div id="chat-resize-handle"></div>
   <div id="messages"></div>
+  <button id="scroll-bottom-btn" title="Scroll to bottom">
+    <svg viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+  </button>
   <div id="input-bar">
+    <button id="settings-btn" title="Settings">⚙️</button>
     <input type="text" id="chat-input" placeholder="輸入訊息..." autocomplete="off">
     <button id="send-btn" title="Send">
       <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
+  </div>
+</div>
+
+<div id="setup-screen">
+  <div class="setup-card">
+    <div class="setup-title">🌸 AI Wife</div>
+    <div class="setup-subtitle">選擇模型並測試連線</div>
+    <div class="setup-field">
+      <label>AI 模型</label>
+      <select id="setup-model">
+        <option value="smart7">Qwen 2.5 7B（快速）</option>
+        <option value="smart9">Qwen 3.5 9B（平衡）</option>
+        <option value="ultra">Qwen 3.5 27B（高品質）</option>
+      </select>
+    </div>
+    <div class="setup-field">
+      <label>語言</label>
+      <select id="setup-lang">
+        <option value="zh-TW">繁體中文</option>
+        <option value="ja">日本語</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+    <button class="test-btn" id="test-connection-btn">測試連線</button>
+    <div class="test-results" id="test-results">
+      <div class="test-item"><span class="status pending" id="test-llm">?</span><span>LLM 模型</span><span id="test-llm-detail" style="margin-left:auto;color:#888;font-size:11px;"></span></div>
+      <div class="test-item"><span class="status pending" id="test-tts">?</span><span>TTS 語音合成</span><span id="test-tts-detail" style="margin-left:auto;color:#888;font-size:11px;"></span></div>
+      <div class="test-item"><span class="status pending" id="test-stt">?</span><span>STT 語音辨識</span><span id="test-stt-detail" style="margin-left:auto;color:#888;font-size:11px;"></span></div>
+      <div class="test-item"><span class="status pending" id="test-skills">?</span><span>Skills 工具</span><span id="test-skills-detail" style="margin-left:auto;color:#888;font-size:11px;"></span></div>
+    </div>
+    <button class="enter-btn" id="enter-btn">進入 💕</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="model-switch-overlay"><div class="spinner"></div><span>切換模型中...</span></div>
+
+<div id="settings-modal" class="hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>系統設定 Settings</h2>
+      <button id="close-settings">✕</button>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="tab-memory">記憶區</button>
+      <button class="tab-btn" data-tab="tab-soul">核心靈魂</button>
+      <button class="tab-btn" data-tab="tab-heartbeat">定時任務</button>
+    </div>
+    <div class="tab-body active" id="tab-memory">
+      <div id="memory-list">Loading...</div>
+    </div>
+    <div class="tab-body" id="tab-soul">
+      <label style="color:#FF69B4;font-size:13px;font-weight:bold;">SOUL.md — AI 老婆的性格定義</label>
+      <textarea id="soul-editor"></textarea>
+      <label style="color:#FF69B4;font-size:13px;font-weight:bold;margin-top:10px;display:block;">PROFILE.md — 用戶偏好與資訊</label>
+      <textarea id="profile-editor" style="width:100%;height:35%;background:#1a1a2e;color:#eee;border:1px solid #555;padding:8px;border-radius:6px;font-family:monospace;resize:none;"></textarea>
+      <button id="save-soul-btn">儲存修改</button>
+    </div>
+    <div class="tab-body" id="tab-heartbeat">
+      <div id="heartbeat-list">Loading...</div>
+    </div>
   </div>
 </div>
 
@@ -436,26 +696,109 @@ initScene();
 animate();
 loadModel('./static/models/character.vrm');
 
-// ── Chat ────────────────────────────────────────────────────────────
+// ── Core Utils ───────────────────────────────────────────────────────
+function uuidv4() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+const CLIENT_ID = uuidv4();
+
+// ── Audio / TTS Playback ─────────────────────────────────────────────
+let currentAudio = null;
+let isPlaying = false;
+
+async function playTTS(text) {
+  try {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+    }
+    const cleanText = text.replace(/\[emotion:\w+\]/g, '').trim();
+    if (!cleanText) return;
+
+    const resp = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cleanText, language: langSel.value }),
+    });
+    if (!resp.ok) return;
+
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    currentAudio = new Audio(url);
+    currentAudio.play();
+    isPlaying = true;
+    currentAudio.onended = () => { isPlaying = false; currentAudio = null; };
+  } catch (e) {
+    console.warn('TTS playback failed:', e);
+  }
+}
+
+function stopTTS() {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+    isPlaying = false;
+  }
+}
+
+// ── UI Elements ──────────────────────────────────────────────────────
 const messagesEl = document.getElementById('messages');
 const inputEl = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
 const greetingEl = document.getElementById('greeting');
+const modeSel = document.getElementById('mode-selector');
+const langSel = document.getElementById('lang-selector');
+const scrollBottomBtn = document.getElementById('scroll-bottom-btn');
+const chatPanel = document.getElementById('chat-panel');
 
-function addMessage(text, isUser, emotion) {
-  const div = document.createElement('div');
-  div.className = `msg ${isUser ? 'user' : 'ai'}`;
-  if (!isUser && emotion && emotion !== 'neutral') {
-    const tag = document.createElement('div');
-    tag.className = 'emotion-tag';
-    tag.textContent = emotion;
-    div.appendChild(tag);
+// Auto-scroll tracking
+let userScrolledUp = false;
+messagesEl.addEventListener('scroll', () => {
+  const atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+  userScrolledUp = !atBottom;
+  scrollBottomBtn.classList.toggle('visible', !atBottom);
+});
+scrollBottomBtn.addEventListener('click', () => {
+  messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: 'smooth' });
+});
+
+function scrollToBottom() {
+  if (!userScrolledUp) {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
   }
-  const span = document.createElement('span');
-  span.textContent = text;
-  div.appendChild(span);
+}
+
+// Chat panel resize
+const resizeHandle = document.getElementById('chat-resize-handle');
+let isResizing = false;
+resizeHandle.addEventListener('mousedown', (e) => {
+  isResizing = true;
+  document.body.style.cursor = 'ns-resize';
+  document.body.style.userSelect = 'none';
+});
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) return;
+  const rect = chatPanel.getBoundingClientRect();
+  const newHeight = window.innerHeight - e.clientY;
+  chatPanel.style.height = Math.max(150, Math.min(window.innerHeight - 100, newHeight)) + 'px';
+});
+document.addEventListener('mouseup', () => {
+  if (isResizing) {
+    isResizing = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+});
+
+function addMessageObj(type, content, className = '') {
+  const div = document.createElement('div');
+  div.className = `msg ${className}`;
+  div.innerHTML = content;
   messagesEl.appendChild(div);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  scrollToBottom();
   return div;
 }
 
@@ -465,36 +808,52 @@ function showGreeting(text) {
   setTimeout(() => { greetingEl.style.display = 'none'; }, 5000);
 }
 
+// ── SSE Consumption ──────────────────────────────────────────────────
 async function sendMessage() {
   const text = inputEl.value.trim();
   if (!text) return;
   inputEl.value = '';
   sendBtn.disabled = true;
 
-  addMessage(text, true);
+  addMessageObj('user', `<span>${text}</span>`, 'user');
 
-  // Play think animation while waiting
   if (animController && animController.actions.has('think')) {
     animController.play('think');
   }
 
-  // Create AI message bubble that will be filled incrementally
   const aiDiv = document.createElement('div');
   aiDiv.className = 'msg ai';
+  const typingEl = document.createElement('div');
+  typingEl.className = 'typing-indicator';
+  typingEl.innerHTML = '<span></span><span></span><span></span>';
+  aiDiv.appendChild(typingEl);
   const aiSpan = document.createElement('span');
-  aiSpan.textContent = '';
+  aiSpan.style.display = 'none';
   aiDiv.appendChild(aiSpan);
   messagesEl.appendChild(aiDiv);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  scrollToBottom();
 
-  let insideThink = false;
+  let typingRemoved = false;
+  function removeTyping() {
+    if (!typingRemoved) { typingEl.remove(); aiSpan.style.display = ''; typingRemoved = true; }
+  }
+
+  // Track state
   let fullText = '';
+  let activePlanCard = null;
+  const startTime = performance.now();
+  let firstChunkTime = null;
 
   try {
     const res = await fetch('/api/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, language: 'zh-TW' })
+      body: JSON.stringify({
+        message: text,
+        language: langSel.value,
+        mode_override: modeSel.value === 'auto' ? null : modeSel.value,
+        client_id: CLIENT_ID
+      })
     });
 
     const reader = res.body.getReader();
@@ -507,7 +866,7 @@ async function sendMessage() {
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
-      buffer = lines.pop(); // keep incomplete line in buffer
+      buffer = lines.pop(); // incomplete line back to buffer
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
@@ -517,55 +876,189 @@ async function sendMessage() {
         try {
           const evt = JSON.parse(jsonStr);
 
-          if (evt.type === 'tool_results') {
-            // Show tool execution info briefly
-            const toolInfo = evt.data.map(t =>
-              `[${t.tool}.${t.action}: ${t.result.success ? 'OK' : t.result.error || 'done'}]`
-            ).join(' ');
-            aiSpan.textContent = toolInfo + '\n';
-          }
+          switch (evt.type) {
+            case 'mode_change':
+              addMessageObj('sys', `⚙️ 模式: ${evt.mode === 'assist' ? '協助' : '聊天'}`, 'notice');
+              break;
+            
+            case 'notice':
+              removeTyping();
+              addMessageObj('sys', evt.text, 'notice');
+              break;
 
-          if (evt.type === 'chunk') {
-            let chunk = evt.data;
-            // Filter out <think>...</think> blocks
-            if (chunk.includes('<think>')) insideThink = true;
-            if (insideThink) {
-              if (chunk.includes('</think>')) {
-                chunk = chunk.split('</think>').pop();
-                insideThink = false;
-              } else {
-                continue; // skip thinking content
+            case 'chunk':
+              removeTyping();
+              if (!firstChunkTime) firstChunkTime = performance.now();
+              fullText += evt.data;
+              aiSpan.textContent = fullText.replace(/\[emotion:\w+\]/g, '');
+              scrollToBottom();
+              break;
+
+            case 'plan':
+              removeTyping();
+              activePlanCard = document.createElement('div');
+              activePlanCard.className = 'plan-card';
+              activePlanCard.innerHTML = `
+                <div><strong>提議計畫:</strong><br>${(evt.description || '').replace(/\n/g, '<br>')}</div>
+                <div class="plan-actions">
+                  <button class="btn-confirm">✅ 授權執行</button>
+                  <button class="btn-deny">❌ 拒絕</button>
+                </div>
+              `;
+              activePlanCard.querySelector('.btn-confirm').onclick = async () => {
+                activePlanCard.querySelectorAll('button').forEach(b => b.disabled = true);
+                activePlanCard.querySelector('.plan-actions').innerHTML = '<i>(執行中...)</i>';
+                try {
+                  const confirmRes = await fetch(`/api/chat/confirm/${CLIENT_ID}`, { method: 'POST' });
+                  const confirmReader = confirmRes.body.getReader();
+                  const confirmDecoder = new TextDecoder();
+                  let confirmBuf = '';
+                  const confirmSpan = document.createElement('span');
+                  const confirmDiv = document.createElement('div');
+                  confirmDiv.className = 'msg ai';
+                  // Tool results go above, text goes below
+                  const toolResultsContainer = document.createElement('div');
+                  confirmDiv.appendChild(toolResultsContainer);
+                  confirmDiv.appendChild(confirmSpan);
+                  messagesEl.appendChild(confirmDiv);
+                  let confirmText = '';
+
+                  while (true) {
+                    const { done: cDone, value: cVal } = await confirmReader.read();
+                    if (cDone) break;
+                    confirmBuf += confirmDecoder.decode(cVal, { stream: true });
+                    const cLines = confirmBuf.split('\n');
+                    confirmBuf = cLines.pop();
+                    for (const cLine of cLines) {
+                      if (!cLine.startsWith('data: ')) continue;
+                      const cJson = cLine.slice(6).trim();
+                      if (!cJson) continue;
+                      try {
+                        const cEvt = JSON.parse(cJson);
+                        if (cEvt.type === 'tool_result') {
+                          // Only show errors silently in a small badge
+                          const r = cEvt.result;
+                          if (r && r.error) {
+                            const badge = document.createElement('div');
+                            badge.style.cssText = 'font-size:11px;color:#f44336;margin:4px 0;padding:4px 8px;background:rgba(255,0,0,0.1);border-radius:6px;';
+                            badge.textContent = `⚠️ ${cEvt.tool}: ${r.error.substring(0, 80)}`;
+                            toolResultsContainer.appendChild(badge);
+                          }
+                        } else if (cEvt.type === 'chunk') {
+                          confirmText += cEvt.data;
+                          confirmSpan.textContent = confirmText.replace(/\[emotion:\w+\]/g, '');
+                        } else if (cEvt.type === 'done') {
+                          if (!confirmText && cEvt.text) {
+                            confirmText = cEvt.text;
+                            confirmSpan.textContent = confirmText.replace(/\[emotion:\w+\]/g, '');
+                          }
+                          if (cEvt.emotion) setEmotion(cEvt.emotion);
+                        }
+                      } catch (ce) {}
+                    }
+                  }
+                  activePlanCard.querySelector('.plan-actions').innerHTML = '<i>(已完成)</i>';
+                } catch (ce) {
+                  activePlanCard.querySelector('.plan-actions').innerHTML = '<i>(執行失敗)</i>';
+                }
+                scrollToBottom();
+              };
+              activePlanCard.querySelector('.btn-deny').onclick = async () => {
+                activePlanCard.querySelectorAll('button').forEach(b => b.disabled = true);
+                try {
+                  const denyRes = await fetch(`/api/chat/deny/${CLIENT_ID}`, { method: 'POST' });
+                  const denyData = await denyRes.json();
+                  activePlanCard.querySelector('.plan-actions').textContent = denyData.text || '(Denied)';
+                } catch (e) {
+                  activePlanCard.querySelector('.plan-actions').textContent = '(Denied)';
+                }
+              };
+              aiDiv.appendChild(activePlanCard);
+              scrollToBottom();
+              break;
+
+            case 'tool_result':
+              const r = evt.result;
+              if (r && r.error) {
+                const badge = document.createElement('div');
+                badge.style.cssText = 'font-size:11px;color:#f44336;margin:4px 0;padding:4px 8px;background:rgba(255,0,0,0.1);border-radius:6px;';
+                badge.textContent = `⚠️ ${evt.tool}: ${r.error.substring(0, 80)}`;
+                aiDiv.insertBefore(badge, aiSpan);
               }
-            }
-            fullText += chunk;
-            aiSpan.textContent = fullText;
-            messagesEl.scrollTop = messagesEl.scrollHeight;
-          }
+              scrollToBottom();
+              break;
 
-          if (evt.type === 'done') {
-            // Clean up: remove [emotion:tag] from displayed text
-            const cleanText = fullText.replace(/\[emotion:\w+\]\s*$/, '').trim();
-            aiSpan.textContent = cleanText;
-            if (evt.emotion) {
-              setEmotion(evt.emotion);
-              const tag = document.createElement('div');
-              tag.className = 'emotion-tag';
-              tag.textContent = evt.emotion;
-              aiDiv.insertBefore(tag, aiSpan);
-            }
-            showGreeting(cleanText.substring(0, 60) + (cleanText.length > 60 ? '...' : ''));
-            setTimeout(() => {
-              setEmotion('neutral');
-              if (animController) animController.play('idle');
-            }, 4000);
+            case 'error':
+              addMessageObj('sys', `錯誤: ${evt.text}`, 'error');
+              break;
+
+            case 'done':
+              removeTyping();
+              if (!fullText && evt.text) {
+                fullText = evt.text;
+                aiSpan.textContent = fullText.replace(/\[emotion:\w+\]/g, '');
+              }
+              if (evt.emotion) {
+                setEmotion(evt.emotion);
+                const tag = document.createElement('div');
+                tag.className = 'emotion-tag';
+                tag.textContent = evt.emotion;
+                aiDiv.insertBefore(tag, aiSpan);
+              }
+              // Timing badge
+              const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+              const ttfb = firstChunkTime ? ((firstChunkTime - startTime) / 1000).toFixed(1) : 'N/A';
+              const timingDiv = document.createElement('div');
+              timingDiv.className = 'timing-badge';
+              timingDiv.textContent = `⏱️ 首字 ${ttfb}s · 總計 ${elapsed}s · ${fullText.length} 字`;
+              aiDiv.appendChild(timingDiv);
+              // TTS replay/stop button
+              const ttsBtn = document.createElement('span');
+              ttsBtn.className = 'tts-btn';
+              ttsBtn.textContent = '\uD83D\uDD0A';
+              ttsBtn.title = '播放 / 停止語音';
+              const ttsText = fullText;
+              ttsBtn.onclick = () => {
+                if (isPlaying && currentAudio) {
+                  stopTTS();
+                  ttsBtn.classList.remove('playing');
+                } else {
+                  playTTS(ttsText);
+                  ttsBtn.classList.add('playing');
+                  const checkEnd = setInterval(() => {
+                    if (!isPlaying) { ttsBtn.classList.remove('playing'); clearInterval(checkEnd); }
+                  }, 300);
+                }
+              };
+              aiDiv.appendChild(ttsBtn);
+              showGreeting(aiSpan.textContent.substring(0, 60) + (aiSpan.textContent.length > 60 ? '...' : ''));
+              // Auto-play TTS audio
+              if (fullText) {
+                playTTS(fullText);
+                ttsBtn.classList.add('playing');
+                const checkEnd = setInterval(() => {
+                  if (!isPlaying) { ttsBtn.classList.remove('playing'); clearInterval(checkEnd); }
+                }, 300);
+              }
+              setTimeout(() => {
+                setEmotion('neutral');
+                if (animController) animController.play('idle');
+              }, 4000);
+              break;
           }
-        } catch (e) { /* skip malformed SSE lines */ }
+        } catch (e) { console.warn('SSE payload parse failed:', e); }
       }
     }
   } catch (err) {
+    removeTyping();
     if (!fullText) aiSpan.textContent = '連線錯誤: ' + err.message;
     if (animController) animController.play('idle');
   }
+  
+  if (!fullText && !aiDiv.querySelector('.plan-card') && !aiDiv.querySelector('.tool-card')) {
+     aiDiv.remove();
+  }
+  
   sendBtn.disabled = false;
   inputEl.focus();
 }
@@ -573,7 +1066,257 @@ async function sendMessage() {
 sendBtn.addEventListener('click', sendMessage);
 inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
-// Initial greeting with wave
+// ── Settings Panel ──────────────────────────────────────────────────
+const settingsModal = document.getElementById('settings-modal');
+document.getElementById('settings-btn').onclick = () => {
+  settingsModal.classList.remove('hidden');
+  loadSettingsData();
+};
+document.getElementById('close-settings').onclick = () => settingsModal.classList.add('hidden');
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.onclick = (e) => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-body').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    document.getElementById(e.target.dataset.tab).classList.add('active');
+  };
+});
+
+async function loadSettingsData() {
+  // Memories
+  try {
+    const memRes = await fetch('/api/memory/list');
+    if (memRes.ok) {
+      const mems = (await memRes.json()).memories || await memRes.json();
+      const l = document.getElementById('memory-list');
+      l.innerHTML = '';
+      if (!mems || mems.length === 0) l.innerHTML = '<span style="color:#aaa">目前沒有記憶。</span>';
+      (Array.isArray(mems) ? mems : []).forEach(m => {
+        const d = document.createElement('div'); d.className = 'memory-item';
+        d.innerHTML = `<div>${m.content} <br><small style="color:#FFB6C1">${m.category}</small></div> <button>刪除</button>`;
+        d.querySelector('button').onclick = async () => {
+          await fetch(`/api/memory/${m.id}`, { method: 'DELETE' });
+          d.remove();
+        };
+        l.appendChild(d);
+      });
+    }
+  } catch (e) { console.error('Load memories failed', e); }
+
+  // Soul
+  try {
+    const soulRes = await fetch('/api/soul');
+    if (soulRes.ok) {
+      const json = await soulRes.json();
+      document.getElementById('soul-editor').value = json.soul || '';
+      document.getElementById('profile-editor').value = json.profile || '';
+    }
+  } catch (e) { console.error('Load soul failed', e); }
+
+  // Heartbeat
+  try {
+    const hbRes = await fetch('/api/heartbeat/jobs');
+    if (hbRes.ok) {
+      const jobs = await hbRes.json();
+      const hl = document.getElementById('heartbeat-list');
+      hl.innerHTML = '';
+      if (!jobs || jobs.length === 0) hl.innerHTML = '<span style="color:#aaa">目前沒有定時任務。</span>';
+      jobs.forEach(j => {
+        const d = document.createElement('div'); d.className = 'hb-item';
+        d.innerHTML = `
+          <div class="info">
+            <div class="cron">ID: ${j.id} | ${j.cron}</div>
+            <div class="action">${j.action}</div>
+          </div>
+          <button class="btn-toggle ${j.enabled ? 'enabled' : ''}">${j.enabled ? '啟用中' : '已停用'}</button>
+        `;
+        const btn = d.querySelector('.btn-toggle');
+        btn.onclick = async () => {
+          j.enabled = !j.enabled;
+          // Optimistic UI update
+          btn.className = `btn-toggle ${j.enabled ? 'enabled' : ''}`;
+          btn.textContent = j.enabled ? '啟用中' : '已停用';
+          // Send update (Using generic add/replace heartbeat endpoint pattern, assuming API exists or just mock for now)
+          try {
+            await fetch('/api/heartbeat/jobs', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(j)
+            });
+          } catch (e) {}
+        };
+        hl.appendChild(d);
+      });
+    }
+  } catch (e) { console.error('Load heartbeat failed', e); }
+}
+
+document.getElementById('save-soul-btn').onclick = async () => {
+  const val = document.getElementById('soul-editor').value;
+  const profileVal = document.getElementById('profile-editor').value;
+  try {
+    await fetch('/api/soul', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ soul: val, profile: profileVal })
+    });
+    const btn = document.getElementById('save-soul-btn');
+    btn.textContent = '已儲存 ✓'; setTimeout(() => btn.textContent = '儲存修改', 2000);
+  } catch (e) { alert('儲存失敗'); }
+};
+
+// ── Startup Screen ──────────────────────────────────────────────────
+const setupScreen = document.getElementById('setup-screen');
+const setupModel = document.getElementById('setup-model');
+const setupLang = document.getElementById('setup-lang');
+const testBtn = document.getElementById('test-connection-btn');
+const enterBtn = document.getElementById('enter-btn');
+const toast = document.getElementById('toast');
+const modelOverlay = document.getElementById('model-switch-overlay');
+
+function showToast(msg, duration = 3000) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+function setStatus(id, status, detail = '') {
+  const el = document.getElementById(id);
+  el.className = `status ${status}`;
+  el.textContent = { ok: '✓', fail: '✗', pending: '?', testing: '…' }[status] || '?';
+  const detailEl = document.getElementById(id + '-detail');
+  if (detailEl && detail) detailEl.textContent = detail;
+}
+
+async function runTests() {
+  testBtn.disabled = true;
+  testBtn.textContent = '測試中...';
+
+  const tests = ['llm', 'tts', 'stt', 'skills'];
+  tests.forEach(t => setStatus('test-' + t, 'testing'));
+
+  try {
+    const res = await fetch('/api/health/test');
+    const data = await res.json();
+
+    // LLM
+    if (data.llm?.ok) {
+      setStatus('test-llm', 'ok', `${data.llm.model} (${data.llm.latency_ms}ms)`);
+    } else {
+      setStatus('test-llm', 'fail', data.llm?.error || 'Unknown');
+    }
+
+    // TTS
+    if (data.tts?.ok) {
+      setStatus('test-tts', 'ok', data.tts.provider);
+    } else {
+      setStatus('test-tts', 'fail', data.tts?.error || 'Unknown');
+    }
+
+    // STT
+    if (data.stt?.ok) {
+      setStatus('test-stt', 'ok', data.stt.provider);
+    } else {
+      setStatus('test-stt', 'fail', data.stt?.error || 'Unknown');
+    }
+
+    // Skills
+    if (data.skills?.ok) {
+      setStatus('test-skills', 'ok', `${data.skills.tool_count} tools`);
+    } else {
+      setStatus('test-skills', 'fail', data.skills?.error || 'Unknown');
+    }
+
+    // Enable enter button if all passed
+    const allOk = tests.every(t => data[t]?.ok);
+    if (allOk) {
+      enterBtn.classList.add('ready');
+    }
+  } catch (e) {
+    tests.forEach(t => setStatus('test-' + t, 'fail', '連線失敗'));
+  }
+
+  testBtn.disabled = false;
+  testBtn.textContent = '重新測試';
+}
+
+testBtn.addEventListener('click', runTests);
+
+enterBtn.addEventListener('click', () => {
+  // Save preferences
+  localStorage.setItem('ai-wife-model', setupModel.value);
+  localStorage.setItem('ai-wife-lang', setupLang.value);
+
+  // Sync main UI selectors
+  document.getElementById('model-selector').value = setupModel.value;
+  langSel.value = setupLang.value;
+
+  // Hide setup screen
+  setupScreen.classList.add('hidden');
+  showToast('歡迎回來 💕');
+});
+
+// Load saved preferences
+const savedModel = localStorage.getItem('ai-wife-model');
+const savedLang = localStorage.getItem('ai-wife-lang');
+if (savedModel) setupModel.value = savedModel;
+if (savedLang) {
+  setupLang.value = savedLang;
+  langSel.value = savedLang;
+}
+
+// ── Model Selector ──────────────────────────────────────────────────
+const modelSelector = document.getElementById('model-selector');
+modelSelector.addEventListener('change', async () => {
+  const preset = modelSelector.value;
+  modelOverlay.classList.add('show');
+  try {
+    const res = await fetch('/api/config/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: preset }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`已切換至 ${data.model}`);
+    }
+  } catch (e) {
+    showToast('切換失敗: ' + e.message);
+  }
+  modelOverlay.classList.remove('show');
+});
+
+// ── Return to Setup from Settings ───────────────────────────────────
+// Add a "回到起始畫面" button in settings
+const settingsTabs = document.querySelector('.tabs');
+const returnBtn = document.createElement('button');
+returnBtn.className = 'tab-btn';
+returnBtn.textContent = '⚙️ 系統';
+returnBtn.onclick = () => {
+  settingsModal.classList.add('hidden');
+  setupScreen.classList.remove('hidden');
+  enterBtn.classList.remove('ready');
+  ['llm','tts','stt','skills'].forEach(t => setStatus('test-' + t, 'pending'));
+};
+settingsTabs.appendChild(returnBtn);
+
+// Auto-run tests on setup screen show
+const observer = new MutationObserver((mutations) => {
+  mutations.forEach((m) => {
+    if (m.attributeName === 'class' && !setupScreen.classList.contains('hidden')) {
+      ['llm','tts','stt','skills'].forEach(t => setStatus('test-' + t, 'pending'));
+      enterBtn.classList.remove('ready');
+    }
+  });
+});
+observer.observe(setupScreen, { attributes: true });
+
+// ── Auto-enter if previously completed ──────────────────────────────
+if (savedModel && savedLang) {
+  setupScreen.classList.add('hidden');
+}
+
 setTimeout(() => {
   showGreeting('Hello~ 老公今天想做什麼呢？');
   if (animController && animController.actions.has('wave')) {

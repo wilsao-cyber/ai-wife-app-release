@@ -14,7 +14,7 @@ class SearchSkill(BaseSkill):
                 "type": "function",
                 "function": {
                     "name": "web_search",
-                    "description": "在網路上搜尋資訊 (Search the web for information). 使用 SearXNG 或 Tavily 搜尋引擎。",
+                    "description": "在網路上搜尋資訊 (Search the web for information). 使用 SearXNG 或 Tavily 搜尋引擎。如果搜尋失敗會回傳 error 欄位，你必須誠實告知用戶搜尋失敗，不要假裝有結果。",
                     "parameters": {
                         "type": "object",
                         "properties": {

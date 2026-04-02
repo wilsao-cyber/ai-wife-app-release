@@ -23,23 +23,35 @@ class GmailAuth:
                 creds.refresh(Request())
                 self._save_credentials(creds)
             else:
+                if not os.path.exists(self.credentials_path):
+                    raise FileNotFoundError(
+                        f"OAuth credentials not found at {self.credentials_path}. "
+                        "Download from GCP Console: APIs & Services > Credentials > OAuth Client ID"
+                    )
                 flow = InstalledAppFlow.from_client_secrets_file(
                     self.credentials_path, SCOPES
                 )
-                creds = flow.run_local_server(port=0)
+                creds = flow.run_local_server(port=9999, open_browser=True)
                 self._save_credentials(creds)
 
         self._service = build("gmail", "v1", credentials=creds)
-        logger.info("Gmail authenticated")
+        logger.info("Gmail authenticated successfully")
 
     def _load_credentials(self):
         if os.path.exists(self.token_path):
-            return Credentials.from_authorized_user_file(self.token_path, SCOPES)
+            try:
+                return Credentials.from_authorized_user_file(self.token_path, SCOPES)
+            except Exception as e:
+                logger.warning(f"Failed to load Gmail token: {e}")
+                os.remove(self.token_path)
         return None
 
     def _save_credentials(self, creds):
+        os.makedirs(os.path.dirname(self.token_path), exist_ok=True)
         with open(self.token_path, "w") as token:
             token.write(creds.to_json())
 
     def users(self):
+        if not self._service:
+            raise RuntimeError("Gmail not authenticated. Call authenticate() first.")
         return self._service.users()

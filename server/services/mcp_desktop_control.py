@@ -28,14 +28,26 @@ class MCPDesktopControl:
             return
 
         logger.info("Starting ubuntu-desktop-control MCP server...")
-        self._process = await asyncio.create_subprocess_exec(
-            self.mcp_server_path,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        self._initialized = False
-        logger.info("MCP server started")
+        try:
+            self._process = await asyncio.create_subprocess_exec(
+                self.mcp_server_path,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            self._initialized = False
+            logger.info("MCP server started")
+        except FileNotFoundError:
+            logger.warning(
+                f"MCP server executable not found: '{self.mcp_server_path}'. "
+                "Desktop control is disabled. Install ubuntu-desktop-control-mcp to enable."
+            )
+            self._process = None
+            self._initialized = False
+        except Exception as e:
+            logger.error(f"Failed to start MCP server: {e}")
+            self._process = None
+            self._initialized = False
 
     async def stop(self):
         """停止 MCP server"""
@@ -51,7 +63,13 @@ class MCPDesktopControl:
     async def _send_request(self, method: str, params: dict = None) -> dict:
         """發送 MCP JSON-RPC 請求"""
         if not self._process or self._process.returncode is not None:
-            await self.start()
+            try:
+                await self.start()
+            except Exception:
+                return {"error": "MCP server not available"}
+
+        if not self._process:
+            return {"error": "MCP server executable not found"}
 
         self._message_id += 1
         request = {

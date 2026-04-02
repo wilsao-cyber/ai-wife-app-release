@@ -15,6 +15,7 @@ class ApiService extends ChangeNotifier {
   Timer? _reconnectTimer;
 
   bool get isConnected => _isConnected;
+  String get currentClientId => _currentClientId;
 
   ApiService({required this.baseUrl});
 
@@ -227,6 +228,57 @@ class ApiService extends ChangeNotifier {
     final response = await request.send();
     final body = await response.stream.bytesToString();
     return jsonDecode(body);
+  }
+
+  Future<Map<String, dynamic>> confirmPlan(String clientId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/chat/confirm/$clientId'),
+    );
+    return jsonDecode(response.body);
+  }
+
+  Future<Map<String, dynamic>> denyPlan(String clientId, String language) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/chat/deny/$clientId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'language': language}),
+    );
+    return jsonDecode(response.body);
+  }
+
+  Future<List<Map<String, dynamic>>> listMemories(int limit) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/memory/list?limit=$limit'),
+    );
+    final data = jsonDecode(response.body);
+    return List<Map<String, dynamic>>.from(data['memories'] ?? []);
+  }
+
+  Future<void> deleteMemory(int memoryId) async {
+    await http.delete(Uri.parse('$baseUrl/api/memory/$memoryId'));
+  }
+
+  Future<Map<String, dynamic>> getSoul() async {
+    final response = await http.get(Uri.parse('$baseUrl/api/soul'));
+    return jsonDecode(response.body);
+  }
+
+  Future<Map<String, dynamic>> updateSoul({String? soul, String? profile}) async {
+    final body = <String, dynamic>{};
+    if (soul != null) body['soul'] = soul;
+    if (profile != null) body['profile'] = profile;
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/soul'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    return jsonDecode(response.body);
+  }
+
+  Future<List<Map<String, dynamic>>> listHeartbeatJobs() async {
+    final response = await http.get(Uri.parse('$baseUrl/api/heartbeat/jobs'));
+    final data = jsonDecode(response.body);
+    return List<Map<String, dynamic>>.from(data['jobs'] ?? []);
   }
 
   void disconnect() {

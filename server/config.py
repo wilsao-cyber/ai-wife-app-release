@@ -1,22 +1,45 @@
 import os
+import sys
 import yaml
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 
 
+# Available model presets
+MODEL_PRESETS = {
+    "smart7": "qwen2.5:7b",
+    "smart9": "qwen3.5:9b",
+    "ultra": "qwen3.5:27b",
+    "ultra-long": "qwen3.5-27b-dev:latest",
+    "moe": "qwen3.5:35b-a3b-q4_k_m",
+    "no-think": "qwen-no-think",
+}
+
+
+def resolve_model(value: str) -> str:
+    """Resolve model name from preset or direct name."""
+    return MODEL_PRESETS.get(value, value)
+
+
 class LLMConfig(BaseSettings):
     provider: str = "ollama"
     base_url: str = "http://localhost:9090"
-    model: str = "qwen2.5:7b"
+    model: str = "smart7"
     temperature: float = 0.7
     max_tokens: int = 2048
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.model = resolve_model(self.model)
+
 
 class TTSConfig(BaseSettings):
-    provider: str = "cosyvoice"
+    provider: str = "voicebox"
     model_path: str = "./models/tts/cosyvoice"
     voice_sample_path: str = "./voice_samples"
     sample_rate: int = 22050
+    voicebox_api_url: str = "http://localhost:17493"
+    voicebox_profile_id: str = ""
 
 
 class STTConfig(BaseSettings):
@@ -114,12 +137,26 @@ class ServerConfig(BaseSettings):
 
 
 def load_config(config_path: str = "../config/server_config.yaml") -> ServerConfig:
+    # Allow model override via CLI: python main.py --model ultra
+    cli_model = None
+    args = sys.argv[1:]
+    for i, arg in enumerate(args):
+        if arg == "--model" and i + 1 < len(args):
+            cli_model = args[i + 1]
+        elif arg.startswith("--model="):
+            cli_model = arg.split("=", 1)[1]
+
     if os.path.exists(config_path):
         with open(config_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         server_data = data.pop("server", {})
         merged = {**server_data, **data}
+        if cli_model:
+            merged.setdefault("llm", {})["model"] = cli_model
         return ServerConfig(**merged)
+
+    if cli_model:
+        return ServerConfig(llm=LLMConfig(model=cli_model))
     return ServerConfig()
 
 

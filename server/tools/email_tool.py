@@ -207,16 +207,45 @@ class EmailTool:
         return ""
 
     def _extract_body(self, msg: dict) -> str:
-        if "parts" in msg["payload"]:
-            for part in msg["payload"]["parts"]:
-                if part["mimeType"] == "text/plain":
-                    import base64
+        import base64
 
-                    data = part["body"].get("data", "")
-                    return base64.urlsafe_b64decode(data).decode("utf-8")
-        elif "body" in msg["payload"]:
-            import base64
+        def _decode(data: str) -> str:
+            if not data:
+                return ""
+            try:
+                return base64.urlsafe_b64decode(data).decode("utf-8", errors="replace")
+            except Exception:
+                return ""
 
-            data = msg["payload"]["body"].get("data", "")
-            return base64.urlsafe_b64decode(data).decode("utf-8")
+        def _extract_from_parts(parts: list) -> str:
+            plain = ""
+            html = ""
+            for part in parts:
+                mime = part.get("mimeType", "")
+                # Recurse into nested multipart
+                if "parts" in part:
+                    nested = _extract_from_parts(part["parts"])
+                    if nested:
+                        return nested
+                data = part.get("body", {}).get("data", "")
+                if mime == "text/plain" and not plain:
+                    plain = _decode(data)
+                elif mime == "text/html" and not html:
+                    html = _decode(data)
+            if plain:
+                return plain
+            if html:
+                # Strip HTML tags for a readable text version
+                import re
+                text = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL)
+                text = re.sub(r'<[^>]+>', ' ', text)
+                text = re.sub(r'\s+', ' ', text).strip()
+                return text
+            return ""
+
+        payload = msg.get("payload", {})
+        if "parts" in payload:
+            return _extract_from_parts(payload["parts"])
+        elif "body" in payload:
+            return _decode(payload["body"].get("data", ""))
         return ""
