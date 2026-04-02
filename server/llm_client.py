@@ -250,10 +250,15 @@ class LLMClient:
                             continue
                         choices = chunk.get("choices")
                         if not choices:
-                            # Check if this is a mid-stream content block
-                            err = chunk.get("error", {})
-                            err_type = err.get("type", "")
-                            if err_type == "data_inspection_failed" and self.has_fallback:
+                            # Check both formats: top-level code and nested error
+                            block_code = (
+                                chunk.get("code", "")
+                                or chunk.get("error", {}).get("code", "")
+                                or chunk.get("error", {}).get("type", "")
+                            )
+                            block_msg = chunk.get("message", "") or chunk.get("error", {}).get("message", "")
+                            is_blocked = block_code in ("data_inspection_failed", "content_filter", "content_policy_violation") or "inappropriate content" in block_msg.lower()
+                            if is_blocked and self.has_fallback:
                                 logger.warning(f"Output blocked mid-stream by {self.provider}, falling back to {self.fallback_provider}")
                                 async for fb_chunk in self._fallback_stream(payload):
                                     yield fb_chunk

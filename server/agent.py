@@ -211,12 +211,18 @@ class AgentOrchestrator:
 
             # Last iteration: no tools, just summary
             is_last = iteration >= MAX_REACT_ITERATIONS - 1
-            next_result = await self.llm.chat(
-                messages,
-                tools=None if is_last else tools,
-                think=False,
-                max_tokens=512 if is_last else 1024,
-            )
+            try:
+                next_result = await self.llm.chat(
+                    messages,
+                    tools=None if is_last else tools,
+                    think=False,
+                    max_tokens=512 if is_last else 1024,
+                )
+            except Exception as e:
+                logger.error(f"LLM call failed in confirm_plan iteration {iteration}: {e}")
+                yield json.dumps({"type": "error", "text": f"LLM 呼叫失敗: {str(e)[:80]}"}, ensure_ascii=False)
+                yield json.dumps({"type": "done", "emotion": "sad", "text": "抱歉老公，處理的時候出了點問題..."}, ensure_ascii=False)
+                return
 
             if (
                 is_last

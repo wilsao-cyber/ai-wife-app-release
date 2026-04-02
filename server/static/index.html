@@ -877,7 +877,7 @@ const inputEl = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
 const greetingEl = document.getElementById('greeting');
 const modeSel = document.getElementById('mode-selector');
-const langSel = document.getElementById('lang-selector');
+var langSel = document.getElementById('lang-selector');
 const scrollBottomBtn = document.getElementById('scroll-bottom-btn');
 const chatPanel = document.getElementById('chat-panel');
 
@@ -1734,6 +1734,10 @@ enterBtn.addEventListener('click', async () => {
           base_url: CLOUD_BASE_URLS[provider],
           api_key: apiKey,
           model: cloudModel,
+          fallback_provider: document.getElementById('setup-fallback-provider').value,
+          fallback_base_url: CLOUD_BASE_URLS[document.getElementById('setup-fallback-provider').value] || '',
+          fallback_api_key: document.getElementById('setup-fallback-key').value.trim(),
+          fallback_model: document.getElementById('setup-fallback-model').value || document.getElementById('setup-fallback-model-search').value.trim(),
         }),
       });
       const data = await res.json();
