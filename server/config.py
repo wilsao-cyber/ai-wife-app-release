@@ -28,6 +28,10 @@ class LLMConfig(BaseSettings):
     temperature: float = 0.7
     max_tokens: int = 2048
     api_key: str = ""
+    fallback_provider: str = ""
+    fallback_base_url: str = ""
+    fallback_api_key: str = ""
+    fallback_model: str = ""
 
     def __init__(self, **data):
         super().__init__(**data)

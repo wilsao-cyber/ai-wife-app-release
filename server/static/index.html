@@ -99,6 +99,22 @@
   .ja-toggle { display: inline-block; cursor: pointer; font-size: 12px; margin-left: 6px; opacity: 0.5; user-select: none; color: #FF69B4; }
   .ja-toggle:hover { opacity: 1; }
   .ja-drawer { display: none; margin-top: 4px; padding: 6px 10px; background: rgba(255,105,180,0.08); border-left: 2px solid #FF69B4; border-radius: 4px; font-size: 13px; color: #ddd; line-height: 1.5; }
+  .media-thumb { max-width: 300px; border-radius: 8px; cursor: pointer; margin: 6px 0; transition: opacity 0.2s; }
+  .media-thumb:hover { opacity: 0.85; }
+  .content-preview { display: inline-block; cursor: pointer; margin: 6px 0; padding: 8px 12px; background: rgba(255,105,180,0.08); border-left: 2px solid #FF69B4; border-radius: 6px; max-width: 300px; }
+  .content-preview:hover { background: rgba(255,105,180,0.15); }
+  .content-preview-title { font-weight: bold; font-size: 13px; color: #FF69B4; }
+  .content-preview-snippet { font-size: 12px; color: #aaa; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); z-index: 9999; justify-content: center; align-items: center; }
+  #lightbox.open { display: flex; }
+  #lightbox-close { position: absolute; top: 16px; right: 24px; font-size: 32px; color: white; cursor: pointer; z-index: 10000; }
+  #lightbox-img { max-width: 90%; max-height: 90%; object-fit: contain; transition: transform 0.2s; }
+  #lightbox-richtext { max-width: 800px; max-height: 85vh; overflow-y: auto; background: #1a1a2e; color: #eee; padding: 24px; border-radius: 12px; font-size: 14px; line-height: 1.7; }
+  #lightbox-nav { position: absolute; bottom: 20px; color: white; font-size: 14px; }
+  .lb-arrow { position: absolute; top: 50%; font-size: 36px; color: white; cursor: pointer; padding: 12px; user-select: none; }
+  .lb-arrow:hover { color: #FF69B4; }
+  #lb-prev { left: 16px; }
+  #lb-next { right: 16px; }
   .ja-drawer.open { display: block; }
   .tts-loading { display: inline-block; font-size: 11px; color: #FF69B4; margin-left: 6px; }
   .tts-loading::after { content: ''; animation: dots 1.2s steps(4) infinite; }
@@ -348,6 +364,17 @@
         <label>API Key</label>
         <input id="setup-api-key" type="password" placeholder="sk-..." style="width:100%;padding:8px;background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;box-sizing:border-box;">
       </div>
+    </div>
+    <div id="setup-fallback-fields" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #333;">
+      <label style="color:#FF69B4;font-size:13px;font-weight:bold;">⚡ Fallback API（內容被攔截時自動切換）</label>
+      <select id="setup-fallback-provider" style="width:100%;padding:8px;margin:8px 0;background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;">
+        <option value="">不使用 Fallback</option>
+        <option value="openrouter">OpenRouter（無審查）</option>
+        <option value="dashscope">DashScope</option>
+        <option value="openai">OpenAI</option>
+      </select>
+      <input id="setup-fallback-model" type="text" list="model-suggestions" placeholder="qwen/qwen3.6-plus:free" style="width:100%;padding:8px;margin:4px 0;background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;box-sizing:border-box;">
+      <input id="setup-fallback-key" type="password" placeholder="Fallback API Key" style="width:100%;padding:8px;margin:4px 0;background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;box-sizing:border-box;">
     </div>
     <div class="setup-field">
       <label>語言</label>
@@ -1069,6 +1096,9 @@ async function sendMessage() {
                 badge.textContent = `⚠️ ${evt.tool}: ${r.error.substring(0, 80)}`;
                 aiDiv.insertBefore(badge, aiSpan);
               }
+              if (r && r.media) {
+                renderMediaInChat(aiDiv, r.media);
+              }
               scrollToBottom();
               break;
 
@@ -1404,6 +1434,7 @@ setupProvider.addEventListener('change', () => {
   const isCloud = setupProvider.value !== 'ollama';
   setupCloudFields.style.display = isCloud ? 'block' : 'none';
   setupLocalModelField.style.display = isCloud ? 'none' : 'block';
+  document.getElementById('setup-fallback-fields').style.display = isCloud ? 'block' : 'none';
   if (isCloud) {
     setupCloudModel.value = CLOUD_DEFAULT_MODELS[setupProvider.value] || '';
     setupCloudModel.placeholder = CLOUD_DEFAULT_MODELS[setupProvider.value] || 'model name';
@@ -1481,7 +1512,13 @@ async function runTests() {
       const pr = await fetch('/api/config/provider', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: prov, base_url: CLOUD_BASE_URLS[prov], api_key: ak, model: cm }),
+        body: JSON.stringify({
+          provider: prov, base_url: CLOUD_BASE_URLS[prov], api_key: ak, model: cm,
+          fallback_provider: document.getElementById('setup-fallback-provider').value,
+          fallback_base_url: CLOUD_BASE_URLS[document.getElementById('setup-fallback-provider').value] || '',
+          fallback_api_key: document.getElementById('setup-fallback-key').value.trim(),
+          fallback_model: document.getElementById('setup-fallback-model').value.trim(),
+        }),
       });
       const pd = await pr.json();
       if (!pd.success) { showToast('Provider 設定失敗: ' + pd.error); testBtn.disabled = false; testBtn.textContent = '測試連線'; return; }
@@ -1569,6 +1606,11 @@ enterBtn.addEventListener('click', async () => {
 
     localStorage.setItem('ai-wife-api-key', apiKey);
     localStorage.setItem('ai-wife-cloud-model', cloudModel);
+    // Save fallback
+    const _fbp = document.getElementById('setup-fallback-provider').value;
+    const _fbk = document.getElementById('setup-fallback-key').value.trim();
+    const _fbm = document.getElementById('setup-fallback-model').value.trim();
+    if (_fbp) { localStorage.setItem('ai-wife-fb-provider', _fbp); localStorage.setItem('ai-wife-fb-key', _fbk); localStorage.setItem('ai-wife-fb-model', _fbm); }
 
     enterBtn.textContent = '連線中...';
     enterBtn.disabled = true;
@@ -1637,6 +1679,15 @@ if (savedProvider && savedProvider !== 'ollama' && savedCloudModel) {
     modelSelector.querySelector('optgroup:last-child').appendChild(opt);
   }
   modelSelector.value = cloudVal;
+}
+// Restore fallback
+const _sfbp = localStorage.getItem('ai-wife-fb-provider');
+const _sfbk = localStorage.getItem('ai-wife-fb-key');
+const _sfbm = localStorage.getItem('ai-wife-fb-model');
+if (_sfbp) {
+  document.getElementById('setup-fallback-provider').value = _sfbp;
+  if (_sfbk) document.getElementById('setup-fallback-key').value = _sfbk;
+  if (_sfbm) document.getElementById('setup-fallback-model').value = _sfbm;
 }
 
 // ── Model Selector ──────────────────────────────────────────────────
@@ -1730,6 +1781,95 @@ setTimeout(() => {
     setTimeout(() => { if (animController) animController.play('idle'); }, 3000);
   }
 }, 2000);
+// ── Lightbox ─────────────────────────────────────────────────────────
+const lightbox = document.getElementById('lightbox');
+const lbImg = document.getElementById('lightbox-img');
+const lbRichtext = document.getElementById('lightbox-richtext');
+const lbNav = document.getElementById('lightbox-nav');
+let lbItems = [];
+let lbIndex = 0;
+
+function openLightbox(items, index) {
+  lbItems = items; lbIndex = index || 0;
+  showLightboxItem();
+  lightbox.classList.add('open');
+}
+function showLightboxItem() {
+  const item = lbItems[lbIndex];
+  lbImg.style.display = 'none';
+  lbRichtext.style.display = 'none';
+  lbRichtext.textContent = '';
+  if (item.type === 'image') {
+    lbImg.src = item.url;
+    lbImg.style.display = 'block';
+    lbImg.style.transform = 'scale(1)';
+  } else if (item.type === 'richtext') {
+    if (item.html && item.html.includes('<')) {
+      const iframe = document.createElement('iframe');
+      iframe.sandbox = 'allow-same-origin';
+      iframe.style.cssText = 'width:100%;height:80vh;border:none;background:white;border-radius:8px;';
+      lbRichtext.appendChild(iframe);
+      iframe.srcdoc = item.html;
+    } else {
+      const pre = document.createElement('pre');
+      pre.style.cssText = 'white-space:pre-wrap;';
+      pre.textContent = item.html || '';
+      lbRichtext.appendChild(pre);
+    }
+    lbRichtext.style.display = 'block';
+  }
+  lbNav.textContent = lbItems.length > 1 ? (lbIndex+1)+' / '+lbItems.length : '';
+  document.getElementById('lb-prev').style.display = lbItems.length > 1 ? 'block' : 'none';
+  document.getElementById('lb-next').style.display = lbItems.length > 1 ? 'block' : 'none';
+}
+document.getElementById('lightbox-close').onclick = () => lightbox.classList.remove('open');
+lightbox.onclick = (e) => { if (e.target === lightbox) lightbox.classList.remove('open'); };
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') lightbox.classList.remove('open'); });
+document.getElementById('lb-prev').onclick = (e) => { e.stopPropagation(); lbIndex = (lbIndex-1+lbItems.length)%lbItems.length; showLightboxItem(); };
+document.getElementById('lb-next').onclick = (e) => { e.stopPropagation(); lbIndex = (lbIndex+1)%lbItems.length; showLightboxItem(); };
+lbImg.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const cur = parseFloat(lbImg.style.transform.replace('scale(','').replace(')','') || '1');
+  const ns = Math.max(0.5, Math.min(5, cur + (e.deltaY > 0 ? -0.1 : 0.1)));
+  lbImg.style.transform = 'scale('+ns+')';
+});
+
+function renderMediaInChat(container, media) {
+  if (!media || !Array.isArray(media)) return;
+  media.forEach((item, idx) => {
+    if (item.type === 'image') {
+      const img = document.createElement('img');
+      img.className = 'media-thumb';
+      img.src = item.url;
+      img.alt = item.alt || '';
+      img.onclick = () => openLightbox(media, idx);
+      container.appendChild(img);
+    } else if (item.type === 'richtext') {
+      const card = document.createElement('div');
+      card.className = 'content-preview';
+      const title = document.createElement('div');
+      title.className = 'content-preview-title';
+      title.textContent = item.title || 'Content';
+      card.appendChild(title);
+      const snippet = document.createElement('div');
+      snippet.className = 'content-preview-snippet';
+      snippet.textContent = (item.html || '').replace(/<[^>]*>/g, '').substring(0, 80) + '...';
+      card.appendChild(snippet);
+      card.onclick = () => openLightbox(media, idx);
+      container.appendChild(card);
+    }
+  });
+}
 </script>
+
+<div id="lightbox">
+  <span id="lightbox-close">&times;</span>
+  <span class="lb-arrow" id="lb-prev">&#10094;</span>
+  <span class="lb-arrow" id="lb-next">&#10095;</span>
+  <img id="lightbox-img" style="display:none;">
+  <div id="lightbox-richtext" style="display:none;"></div>
+  <div id="lightbox-nav"></div>
+</div>
+
 </body>
 </html>

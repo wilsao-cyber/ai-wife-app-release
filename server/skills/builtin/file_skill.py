@@ -89,4 +89,11 @@ class FileSkill(BaseSkill):
         method = dispatch.get(tool_name)
         if not method:
             return {"error": f"Unknown file tool: {tool_name}"}
-        return await method(**kwargs)
+        result = await method(**kwargs)
+        # Add rich text media for large file content
+        if tool_name == "file_read" and result.get("content"):
+            content = result["content"]
+            if len(content) > 200:
+                html = f"<pre style='white-space:pre-wrap;'>{content}</pre>"
+                result["media"] = [{"type": "richtext", "title": kwargs.get("path", "File"), "html": html}]
+        return result

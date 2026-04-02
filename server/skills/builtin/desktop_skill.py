@@ -123,4 +123,15 @@ class DesktopSkill(BaseSkill):
         method = dispatch.get(tool_name)
         if not method:
             return {"error": f"Unknown desktop tool: {tool_name}"}
-        return await method()
+        result = await method()
+        # Add media for screenshot results
+        if tool_name == "desktop_screenshot" and result.get("screenshot_path"):
+            import shutil, os
+            src = result["screenshot_path"]
+            fname = os.path.basename(src)
+            dst = f"./output/screenshots/{fname}"
+            os.makedirs("./output/screenshots", exist_ok=True)
+            if os.path.exists(src):
+                shutil.copy2(src, dst)
+            result["media"] = [{"type": "image", "url": f"/api/media/{fname}", "alt": "Desktop screenshot"}]
+        return result

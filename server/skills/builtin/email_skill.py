@@ -132,4 +132,13 @@ class EmailSkill(BaseSkill):
         method = dispatch.get(tool_name)
         if not method:
             return {"error": f"Unknown email tool: {tool_name}"}
-        return await method()
+        result = await method()
+        # Add rich text media for email_read
+        if tool_name == "email_read" and result.get("body"):
+            subject = result.get("subject", "No subject")
+            sender = result.get("from", "")
+            date = result.get("date", "")
+            body = result["body"]
+            html = f"<h2>{subject}</h2><p><b>From:</b> {sender}<br><b>Date:</b> {date}</p><hr>{body}"
+            result["media"] = [{"type": "richtext", "title": subject, "html": html}]
+        return result

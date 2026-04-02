@@ -111,6 +111,10 @@ progress = StartupProgress()
 async def lifespan(app: FastAPI):
     global llm_client, tts_engine, stt_engine, agent, heartbeat
 
+    import os
+    os.makedirs("./output/screenshots", exist_ok=True)
+    os.makedirs("./output/media", exist_ok=True)
+
     logger.info("=" * 60)
     logger.info("AI Wife Server — Starting up")
     logger.info("=" * 60)
@@ -545,6 +549,10 @@ async def get_provider():
         "base_url": config.llm.base_url,
         "model": config.llm.model,
         "has_api_key": bool(config.llm.api_key),
+        "fallback_provider": config.llm.fallback_provider,
+        "fallback_base_url": config.llm.fallback_base_url,
+        "fallback_model": config.llm.fallback_model,
+        "has_fallback_key": bool(config.llm.fallback_api_key),
     }
 
 
@@ -569,14 +577,36 @@ async def set_provider(data: dict):
         config.llm.base_url = base_url
         config.llm.api_key = api_key
         config.llm.model = model
+        # Fallback (optional)
+        fb_provider = data.get("fallback_provider", "").strip()
+        fb_base_url = data.get("fallback_base_url", "").strip()
+        fb_api_key = data.get("fallback_api_key", "").strip()
+        fb_model = data.get("fallback_model", "").strip()
+        if fb_provider and fb_api_key:
+            llm_client.update_fallback(fb_provider, fb_base_url, fb_api_key, fb_model)
+            config.llm.fallback_provider = fb_provider
+            config.llm.fallback_base_url = fb_base_url
+            config.llm.fallback_api_key = fb_api_key
+            config.llm.fallback_model = fb_model
+
         return {
             "success": True,
             "provider": provider,
-            "base_url": base_url,
             "model": model,
+            "has_fallback": llm_client.has_fallback,
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@app.get("/api/media/{filename}")
+async def get_media(filename: str):
+    import os
+    for directory in ["./output/screenshots", "./output/audio", "./output/media"]:
+        path = os.path.join(directory, filename)
+        if os.path.exists(path):
+            return FileResponse(path)
+    raise HTTPException(status_code=404, detail="File not found")
 
 
 @app.get("/api/health")
