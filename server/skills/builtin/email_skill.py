@@ -133,26 +133,24 @@ class EmailSkill(BaseSkill):
         if not method:
             return {"error": f"Unknown email tool: {tool_name}"}
 
-        # Validate email_id for read/delete — if invalid, auto-fetch from list
+        # Validate email_id for read/delete
         if tool_name in ("email_read", "email_delete"):
             eid = kwargs.get("email_id", "")
             if not eid or len(eid) < 10 or not eid.replace("-", "").replace("_", "").isalnum():
-                listing = await self._tool.list_emails(limit=5)
-                emails = listing.get("emails", [])
-                if not emails:
-                    return {"error": "No emails found"}
-                # Try to match by index if email_id looks like a number
-                try:
-                    idx = int(eid) - 1 if eid.isdigit() else 0
-                    idx = max(0, min(idx, len(emails) - 1))
-                except ValueError:
-                    idx = 0
-                kwargs["email_id"] = emails[idx]["id"]
-                # Rebuild the dispatch lambda with corrected id
-                if tool_name == "email_read":
-                    method = lambda: self._tool.read_email(email_id=kwargs["email_id"])
+                # Numeric index → auto-fetch from list
+                if eid.isdigit():
+                    listing = await self._tool.list_emails(limit=10)
+                    emails = listing.get("emails", [])
+                    if not emails:
+                        return {"error": "No emails found"}
+                    idx = max(0, min(int(eid) - 1, len(emails) - 1))
+                    kwargs["email_id"] = emails[idx]["id"]
+                    if tool_name == "email_read":
+                        method = lambda: self._tool.read_email(email_id=kwargs["email_id"])
+                    else:
+                        method = lambda: self._tool.delete_email(email_id=kwargs["email_id"])
                 else:
-                    method = lambda: self._tool.delete_email(email_id=kwargs["email_id"])
+                    return {"error": f"Invalid email_id: '{eid}'. Use email_list first to get valid IDs, or pass a number (1=first, 2=second)."}
 
         result = await method()
         # Add rich text media for email_read
