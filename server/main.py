@@ -586,16 +586,37 @@ async def list_provider_models(provider: str = "", base_url: str = "", api_key: 
             return {"models": [], "error": "Failed to fetch"}
 
         elif provider == "dashscope":
-            # DashScope doesn't have a model list API, return known models
+            # DashScope doesn't have a public model list API
             return {"models": [
+                # Qwen3
                 {"id": "qwen3-235b-a22b", "name": "Qwen3 235B MoE", "context": 131072, "free": False},
                 {"id": "qwen3-32b", "name": "Qwen3 32B", "context": 131072, "free": False},
+                {"id": "qwen3-30b-a3b", "name": "Qwen3 30B MoE", "context": 131072, "free": False},
+                {"id": "qwen3-14b", "name": "Qwen3 14B", "context": 131072, "free": False},
                 {"id": "qwen3-8b", "name": "Qwen3 8B", "context": 131072, "free": False},
+                {"id": "qwen3-4b", "name": "Qwen3 4B", "context": 131072, "free": False},
+                {"id": "qwen3-1.7b", "name": "Qwen3 1.7B", "context": 32768, "free": False},
+                {"id": "qwen3-0.6b", "name": "Qwen3 0.6B", "context": 32768, "free": False},
+                # Qwen3.5 / Qwen3.6
+                {"id": "qwen3.5-7b", "name": "Qwen3.5 7B", "context": 131072, "free": False},
+                {"id": "qwen3.5-14b", "name": "Qwen3.5 14B", "context": 131072, "free": False},
+                {"id": "qwen3.5-32b", "name": "Qwen3.5 32B", "context": 131072, "free": False},
+                # Qwen commercial
                 {"id": "qwen-plus", "name": "Qwen Plus", "context": 131072, "free": False},
-                {"id": "qwen-turbo", "name": "Qwen Turbo", "context": 131072, "free": False},
+                {"id": "qwen-turbo", "name": "Qwen Turbo", "context": 1000000, "free": False},
                 {"id": "qwen-max", "name": "Qwen Max", "context": 32768, "free": False},
+                {"id": "qwen-long", "name": "Qwen Long", "context": 10000000, "free": False},
+                # Qwen2.5
                 {"id": "qwen2.5-72b-instruct", "name": "Qwen2.5 72B", "context": 131072, "free": False},
                 {"id": "qwen2.5-32b-instruct", "name": "Qwen2.5 32B", "context": 131072, "free": False},
+                {"id": "qwen2.5-14b-instruct", "name": "Qwen2.5 14B", "context": 131072, "free": False},
+                {"id": "qwen2.5-7b-instruct", "name": "Qwen2.5 7B", "context": 131072, "free": False},
+                # Qwen VL (multimodal)
+                {"id": "qwen-vl-max", "name": "Qwen VL Max (Vision)", "context": 32768, "free": False},
+                {"id": "qwen-vl-plus", "name": "Qwen VL Plus (Vision)", "context": 8192, "free": False},
+                # Qwen Coder
+                {"id": "qwen2.5-coder-32b-instruct", "name": "Qwen2.5 Coder 32B", "context": 131072, "free": False},
+                {"id": "qwen2.5-coder-14b-instruct", "name": "Qwen2.5 Coder 14B", "context": 131072, "free": False},
             ]}
 
         elif provider == "openai":

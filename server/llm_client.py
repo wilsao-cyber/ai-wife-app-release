@@ -44,12 +44,17 @@ class LLMClient:
         return {}
 
     def _is_content_blocked(self, error: httpx.HTTPStatusError) -> bool:
-        if error.response.status_code != 400:
+        if error.response.status_code not in (400, 403):
             return False
         try:
             body = error.response.json()
-            code = body.get("error", {}).get("code", "")
-            return code in ("data_inspection_failed", "content_filter", "content_policy_violation")
+            err = body.get("error", {})
+            code = err.get("code", "")
+            msg = err.get("message", "").lower()
+            etype = err.get("type", "").lower()
+            blocked_codes = ("data_inspection_failed", "content_filter", "content_policy_violation")
+            blocked_msgs = ("inappropriate content", "content filter", "safety", "moderation")
+            return code in blocked_codes or etype in ("data_inspection_failed",) or any(k in msg for k in blocked_msgs)
         except Exception:
             return False
 
