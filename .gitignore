@@ -1,0 +1,62 @@
+# Flutter
+*.pyc
+__pycache__/
+*.log
+*.pot
+*.pyc
+.pytest_cache/
+.mypy_cache/
+venv/
+env/
+.venv/
+
+# Mobile App
+mobile_app/build/
+mobile_app/.dart_tool/
+mobile_app/.packages
+mobile_app/.pub-cache/
+mobile_app/pubspec.lock
+mobile_app/android/
+mobile_app/ios/
+mobile_app/linux/
+mobile_app/macos/
+mobile_app/windows/
+mobile_app/test/
+
+# Server
+server/__pycache__/
+server/.env
+server/venv/
+*.egg-info/
+
+# Secrets & tokens
+config/credentials.json
+config/*_token.json
+
+# Runtime data
+server/memory/memories.db
+output/
+server/output/
+server/models/
+
+# Models (top-level ML models directory only)
+/models/
+!/models/README.md
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large binary files (top-level output only)
+/output/**/*.glb
+/output/**/*.gltf
+/output/**/*.vrm
+/output/**/*.obj
+*.egg-info/.superpowers/
