@@ -1214,16 +1214,17 @@ async function playTTSStream(text, emotion = 'neutral') {
           }
         } else if (event.type === 'done' || event.type === 'cancelled') {
           streamDone = true;
-          // If playback hasn't started yet (e.g., only 1 sentence arrived), start now
           if (!playbackStarted && audioQueue.filter(Boolean).length > 0) {
             playbackStarted = true;
             if (ttsOnFirstAudio) ttsOnFirstAudio();
             playNext();
-          } else if (isPlaying) {
-            // Let playNext handle completion when current audio ends
-          } else {
+          } else if (!isPlaying && playIndex < audioQueue.length && audioQueue[playIndex]) {
+            // Stream done, not currently playing, but there's unplayed audio — play it
+            playNext();
+          } else if (!isPlaying) {
             if (ttsOnComplete) ttsOnComplete();
           }
+          // else: isPlaying=true, playNext will handle via onended
         } else if (event.type === 'error') {
           console.error('TTS server error:', event.message);
           streamDone = true;
