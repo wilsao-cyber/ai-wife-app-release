@@ -1265,6 +1265,34 @@ async function playTTS(text, emotion = 'neutral') {
   }
 }
 
+// ── SFX Audio Layer ──────────────────────────────────────────────────
+const sfxPool = [new Audio(), new Audio(), new Audio()];
+let sfxPoolIdx = 0;
+
+function playSfx(urls, loop = false, volume = 0.3) {
+  stopSfx();
+  urls.forEach(url => {
+    const audio = sfxPool[sfxPoolIdx % sfxPool.length];
+    sfxPoolIdx++;
+    audio.pause();
+    audio.src = url;
+    audio.loop = loop;
+    audio.volume = Math.min(1, Math.max(0, volume));
+    audio.play().catch(e => console.warn('SFX play blocked:', e));
+  });
+}
+
+function stopSfx() {
+  sfxPool.forEach(a => { a.pause(); a.currentTime = 0; a.src = ''; });
+}
+
+function handleSfxResult(result) {
+  if (!result || !result.sfx) return;
+  const sfx = result.sfx;
+  if (sfx.stop) { stopSfx(); }
+  else if (sfx.urls) { playSfx(sfx.urls, sfx.loop, sfx.volume || 0.3); }
+}
+
 function stopTTS() {
   if (streamAbortController) {
     streamAbortController.abort();
@@ -1486,6 +1514,7 @@ async function sendMessage() {
                           if (r && r.media) {
                             renderMediaInChat(toolResultsContainer, r.media);
                           }
+                          handleSfxResult(r);
                         } else if (cEvt.type === 'chunk') {
                           confirmText += cEvt.data;
                           confirmSpan.textContent = confirmText.replace(/\[emotion:\w+\]/g, '');
@@ -1530,6 +1559,8 @@ async function sendMessage() {
               if (r && r.media) {
                 renderMediaInChat(aiDiv, r.media);
               }
+              // Handle SFX playback from tool results
+              handleSfxResult(r);
               scrollToBottom();
               break;
 

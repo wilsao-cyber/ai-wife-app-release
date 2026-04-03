@@ -180,7 +180,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         progress.fail(str(e))
 
-    # Phase 6: Skill System
+    # Phase 6: SFX Catalog
+    progress.begin("SFX Catalog")
+    try:
+        from sfx_catalog import sfx_catalog
+        sfx_catalog.build()
+        progress.ok(f"{len(sfx_catalog.entries)} sound effects indexed")
+    except Exception as e:
+        progress.fail(str(e))
+
+    # Phase 7: Skill System
     progress.begin("Skill System")
     skill_registry = SkillRegistry()
     skill_registry.discover("skills/builtin")
@@ -521,6 +530,26 @@ async def voice_test(data: dict):
         shutil.copy2(str(src), str(dst))
         return {"audio_url": f"/audio/{src.name}", "duration": gen.get("duration", 0)}
     return {"error": "Audio file not found"}
+
+
+@app.get("/api/sfx/{sfx_id}")
+async def get_sfx(sfx_id: str):
+    """Serve SFX audio file by catalog ID."""
+    from sfx_catalog import sfx_catalog
+    entry = sfx_catalog.entries.get(sfx_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="SFX not found")
+    return FileResponse(entry.path)
+
+
+@app.get("/api/sfx")
+async def list_sfx(category: str = "", q: str = ""):
+    """Search/browse SFX catalog."""
+    from sfx_catalog import sfx_catalog
+    if not category and not q:
+        return {"categories": sfx_catalog.get_categories()}
+    results = sfx_catalog.search(query=q, category=category, limit=20)
+    return {"results": [{"id": e.id, "description": e.description, "category": e.category} for e in results]}
 
 
 @app.get("/audio/{filename}")
