@@ -74,7 +74,7 @@ class WebSearchTool:
                         "search_lang": market,
                     },
                     headers={
-                        "X-Subscription-Token": "BSAXko4yTAHbceq9Koj5tKetnKlkYaP",
+                        "X-Subscription-Token": self.config.brave_api_key,
                         "Accept": "application/json",
                     },
                 )

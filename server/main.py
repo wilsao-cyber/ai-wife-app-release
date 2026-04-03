@@ -944,6 +944,40 @@ async def set_provider(data: dict):
         return {"success": False, "error": str(e)}
 
 
+# --- API Keys Management ---
+
+
+@app.get("/api/config/keys")
+async def get_api_keys():
+    """Get current API keys status (masked)."""
+    import os
+
+    def mask(key: str) -> str:
+        if not key:
+            return ""
+        return "***" + key[-4:] if len(key) > 4 else "***"
+
+    return {
+        "brave_api_key": mask(config.web_search.brave_api_key),
+        "google_credentials": bool(os.path.exists(config.email.credentials_path)),
+        "gmail_token": bool(os.path.exists(config.email.token_path)),
+        "calendar_token": bool(os.path.exists(config.calendar.token_path)),
+    }
+
+
+@app.post("/api/config/keys")
+async def set_api_keys(data: dict):
+    """Update API keys at runtime."""
+    updated = []
+
+    brave_key = data.get("brave_api_key", "").strip()
+    if brave_key:
+        config.web_search.brave_api_key = brave_key
+        updated.append("brave_api_key")
+
+    return {"success": True, "updated": updated}
+
+
 @app.get("/api/media/{filename}")
 async def get_media(filename: str):
     import os

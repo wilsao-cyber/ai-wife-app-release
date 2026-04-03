@@ -555,6 +555,15 @@
       <input id="provider-api-key" type="password" placeholder="sk-..." style="width:100%;padding:8px;margin:8px 0;background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;box-sizing:border-box;">
       <div id="provider-status" style="color:#aaa;font-size:12px;margin:4px 0;"></div>
       <button id="save-provider-btn" style="margin-top:10px;width:100%;padding:10px;background:var(--accent);color:var(--bg-primary);border:none;border-radius:6px;cursor:pointer;font-weight:600;">套用設定</button>
+      <div style="margin:16px 0;border-top:1px solid var(--glass-border);padding-top:12px;">
+        <label style="color:var(--accent);font-size:13px;font-weight:bold;">🔑 其他 API Keys</label>
+        <div style="margin:8px 0;">
+          <label style="color:var(--text-secondary);font-size:11px;">Brave Search API Key</label>
+          <input id="keys-brave" type="password" placeholder="輸入 Brave Search API Key..." style="width:100%;padding:8px;margin:4px 0;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;font-size:12px;outline:none;box-sizing:border-box;">
+        </div>
+        <div id="keys-google-status" style="color:var(--text-muted);font-size:11px;margin:6px 0;"></div>
+        <button id="save-keys-btn" style="width:100%;padding:8px;background:var(--accent-muted);color:var(--accent);border:1px solid var(--glass-border);border-radius:6px;cursor:pointer;font-size:12px;">儲存 API Keys</button>
+      </div>
     </div>
     <div class="tab-body" id="tab-voice">
       <label style="color:var(--accent);font-size:13px;font-weight:bold;">🎙️ 語音角色</label>
@@ -2053,7 +2062,46 @@ async function loadProviderSettings() {
       providerStatus.textContent = data.has_api_key ? '🔑 API Key 已設定' : '';
     }
   } catch (e) { console.error('Load provider failed', e); }
+
+  // Load API keys status
+  try {
+    const kr = await fetch('/api/config/keys');
+    if (kr.ok) {
+      const kd = await kr.json();
+      if (kd.brave_api_key) document.getElementById('keys-brave').placeholder = kd.brave_api_key + ' (已設定)';
+      const gStatus = [];
+      if (kd.google_credentials) gStatus.push('✅ Google OAuth 憑證');
+      else gStatus.push('❌ Google OAuth 憑證 (需要 config/credentials.json)');
+      if (kd.gmail_token) gStatus.push('✅ Gmail Token');
+      if (kd.calendar_token) gStatus.push('✅ Calendar Token');
+      document.getElementById('keys-google-status').innerHTML = gStatus.join('<br>');
+    }
+  } catch (e) { console.error('Load keys failed', e); }
 }
+
+document.getElementById('save-keys-btn').onclick = async () => {
+  const btn = document.getElementById('save-keys-btn');
+  const braveKey = document.getElementById('keys-brave').value.trim();
+  if (!braveKey) { btn.textContent = '請輸入至少一個 Key'; setTimeout(() => { btn.textContent = '儲存 API Keys'; }, 2000); return; }
+  btn.disabled = true; btn.textContent = '儲存中...';
+  try {
+    const body = {};
+    if (braveKey) body.brave_api_key = braveKey;
+    await fetch('/api/config/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    btn.textContent = '✓ 已儲存';
+    // Also save to localStorage for persistence across restarts
+    if (braveKey) localStorage.setItem('ai-wife-brave-key', braveKey);
+  } catch { btn.textContent = '失敗'; }
+  finally { setTimeout(() => { btn.disabled = false; btn.textContent = '儲存 API Keys'; }, 2000); }
+};
+
+// Auto-restore Brave key from localStorage on startup
+(async () => {
+  const savedBrave = localStorage.getItem('ai-wife-brave-key');
+  if (savedBrave) {
+    try { await fetch('/api/config/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brave_api_key: savedBrave }) }); } catch {}
+  }
+})();
 
 document.getElementById('save-provider-btn').onclick = async () => {
   const btn = document.getElementById('save-provider-btn');

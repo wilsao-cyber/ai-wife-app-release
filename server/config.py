@@ -75,6 +75,7 @@ class CalendarConfig(BaseSettings):
 class WebSearchConfig(BaseSettings):
     provider: str = "searxng"
     base_url: str = "http://localhost:8080"
+    brave_api_key: str = ""
 
 
 class OpenCodeConfig(BaseSettings):
