@@ -291,13 +291,13 @@ async def handle_chat(data: dict, client_id: str) -> dict:
     language = data.get("language", config.languages.default)
 
     response = await agent.chat(message, language, client_id)
-
-    audio_path, visemes = await tts_engine.synthesize(response["text"], language)
+    emotion = response.get("emotion", "neutral")
+    audio_path, visemes = await tts_engine.synthesize(response["text"], language, emotion)
 
     return {
         "type": "chat_response",
         "text": response["text"],
-        "emotion": response.get("emotion", "neutral"),
+        "emotion": emotion,
         "mode": response.get("mode", "chat"),
         "audio_url": f"/audio/{audio_path}",
         "visemes": visemes,
@@ -313,7 +313,8 @@ async def handle_voice_input(data: dict, client_id: str) -> dict:
     text = await stt_engine.transcribe(audio_file, language)
 
     response = await agent.chat(text, language, client_id)
-    audio_path, visemes = await tts_engine.synthesize(response["text"], language)
+    emotion = response.get("emotion", "neutral")
+    audio_path, visemes = await tts_engine.synthesize(response["text"], language, emotion)
 
     return {
         "type": "voice_response",
@@ -1049,7 +1050,7 @@ async def vision_capture(image: UploadFile = File(...), language: str = "zh-TW")
     image_data = await image.read()
     result = await vision_analyzer.analyze_single(image_data, language)
     if result.get("text"):
-        audio_path, visemes = await tts_engine.synthesize(result["text"], language)
+        audio_path, visemes = await tts_engine.synthesize(result["text"], language, result.get("emotion", "neutral"))
         result["audio_url"] = f"/audio/{audio_path}"
         result["visemes"] = visemes
     return result
@@ -1070,7 +1071,7 @@ async def vision_stream(
     if result is None:
         return {"changed": False}
     if result.get("text"):
-        audio_path, visemes = await tts_engine.synthesize(result["text"], language)
+        audio_path, visemes = await tts_engine.synthesize(result["text"], language, result.get("emotion", "neutral"))
         result["audio_url"] = f"/audio/{audio_path}"
         result["visemes"] = visemes
     result["changed"] = True

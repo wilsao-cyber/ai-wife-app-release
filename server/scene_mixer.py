@@ -90,7 +90,6 @@ async def mix_scene(
     Returns path to the mixed audio file.
     """
     import httpx
-    from audio_fx import process_wav
 
     output_dir = Path("./output/audio")
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -3,9 +3,22 @@ from skills.base_skill import BaseSkill
 
 logger = logging.getLogger(__name__)
 
+# Injected at startup via initialize()
+_tts_engine = None
+
 
 class SceneSkill(BaseSkill):
     """Skill for creating immersive audio scenes with TTS + SFX mixed together."""
+
+    async def initialize(self):
+        """Get tts_engine reference after startup completes."""
+        global _tts_engine
+        try:
+            import main as m
+            _tts_engine = m.tts_engine
+            logger.info("SceneSkill: tts_engine injected")
+        except Exception as e:
+            logger.warning(f"SceneSkill init failed: {e}")
 
     @property
     def tools(self) -> list[dict]:
@@ -37,6 +50,7 @@ class SceneSkill(BaseSkill):
                                     "properties": {
                                         "type": {"type": "string", "enum": ["speech", "sfx", "pause", "sfx_stop"]},
                                         "text": {"type": "string"},
+                                        "tag": {"type": "string"},
                                         "query": {"type": "string"},
                                         "volume": {"type": "number"},
                                         "duration": {"type": "number"},
@@ -60,16 +74,17 @@ class SceneSkill(BaseSkill):
         if not script:
             return {"error": "Empty script"}
 
+        global _tts_engine
+        if not _tts_engine:
+            return {"error": "TTS engine not initialized"}
+
         try:
             from scene_mixer import mix_scene
             from sfx_catalog import sfx_catalog
-            # Get tts_engine from the global scope (set during startup)
-            import main as main_module
-            tts_engine = main_module.tts_engine
 
             path = await mix_scene(
                 script=script,
-                tts_engine=tts_engine,
+                tts_engine=_tts_engine,
                 sfx_catalog=sfx_catalog,
                 language="zh-TW",
                 emotion=kwargs.get("emotion", "horny"),

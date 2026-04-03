@@ -1276,7 +1276,7 @@ async function playTTS(text, emotion = 'neutral') {
     currentAudio = new Audio(url);
     currentAudio.play();
     isPlaying = true;
-    currentAudio.onended = () => { isPlaying = false; currentAudio = null; };
+    currentAudio.onended = () => { isPlaying = false; currentAudio = null; URL.revokeObjectURL(url); };
     return data.ja_text || null;
   } catch (e) {
     console.warn('TTS playback failed:', e);
@@ -2369,7 +2369,7 @@ enterBtn.addEventListener('click', async () => {
       currentAudio = new Audio(welcomeAudioUrl);
       currentAudio.play().catch(() => {});
       isPlaying = true;
-      currentAudio.onended = () => { isPlaying = false; currentAudio = null; };
+      currentAudio.onended = () => { isPlaying = false; currentAudio = null; URL.revokeObjectURL(welcomeAudioUrl); welcomeAudioUrl = null; };
     }, 500);
   }
 });
