@@ -581,6 +581,10 @@ class AgentOrchestrator:
             "再聽",
             "再播",
             "繼續播",
+            "場景",
+            "scene",
+            "親密場景",
+            "互動",
         ]
 
     def _classify_intent_fast(self, message: str) -> str:

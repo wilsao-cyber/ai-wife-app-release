@@ -107,8 +107,8 @@
   .render-slider-row .slider-val { font-size: 10px; color: var(--text-muted); width: 35px; text-align: right; }
   .render-section { font-size: 11px; color: var(--accent); font-weight: 600; margin-top: 8px; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 1px solid var(--glass-border); }
 
-  #tts-toggle, #fallback-toggle { cursor: pointer; font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--glass-border); background: none; color: var(--text-secondary); margin-left: 2px; }
-  #tts-toggle.on, #fallback-toggle.on { color: var(--accent); border-color: var(--accent); }
+  #tts-toggle, #fallback-toggle, #tts-mode-toggle { cursor: pointer; font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--glass-border); background: none; color: var(--text-secondary); margin-left: 2px; }
+  #tts-toggle.on, #fallback-toggle.on, #tts-mode-toggle.on { color: var(--accent); border-color: var(--accent); }
 
   /* ── Chat Panel (Overlay Right) ──────────────────────────────────── */
   #chat-panel {
@@ -390,6 +390,7 @@
       <option value="en">English</option>
     </select>
     <button id="tts-toggle" class="on" title="語音開關">🔊</button>
+    <button id="tts-mode-toggle" title="串流播放 / 完整播放">⚡</button>
     <button id="fallback-toggle" title="使用備用模型 (無審查)">🔓</button>
     <select id="scene-selector" title="切換場景">
       <option value="home">🏠 居家</option>
@@ -1121,6 +1122,20 @@ fallbackToggleBtn.onclick = () => {
   fallbackToggleBtn.textContent = useFallback ? '🔓' : '🔒';
 };
 
+// TTS playback mode toggle (streaming vs batch)
+let ttsBatchMode = localStorage.getItem('ai-wife-tts-batch') === 'on';
+const ttsModeToggleBtn = document.getElementById('tts-mode-toggle');
+ttsModeToggleBtn.className = ttsBatchMode ? 'on' : '';
+ttsModeToggleBtn.textContent = ttsBatchMode ? '🎬' : '⚡';
+ttsModeToggleBtn.title = ttsBatchMode ? '完整播放模式 (點擊切換為串流)' : '串流播放模式 (點擊切換為完整)';
+ttsModeToggleBtn.onclick = () => {
+  ttsBatchMode = !ttsBatchMode;
+  localStorage.setItem('ai-wife-tts-batch', ttsBatchMode ? 'on' : 'off');
+  ttsModeToggleBtn.className = ttsBatchMode ? 'on' : '';
+  ttsModeToggleBtn.textContent = ttsBatchMode ? '🎬' : '⚡';
+  ttsModeToggleBtn.title = ttsBatchMode ? '完整播放模式 (點擊切換為串流)' : '串流播放模式 (點擊切換為完整)';
+};
+
 // ── Streaming TTS Player (state machine) ────────────────────────────
 // States: idle → playing → waiting_for_audio → playing → ... → complete
 // Single function `tryPlayNext` handles ALL state transitions.
@@ -1684,28 +1699,50 @@ async function sendMessage() {
                 ttsLoading.style.display = 'inline-block';
                 ttsBtn.classList.add('playing');
 
-                ttsOnJaText = (jaText) => {
-                  cachedJaText = jaText;
-                  jaDrawer.textContent = jaText;
-                };
-                ttsOnFirstAudio = () => {
-                  ttsLoading.style.display = 'none';
-                };
-                ttsOnComplete = () => {
-                  ttsBtn.classList.remove('playing');
+                if (ttsBatchMode) {
+                  // Batch mode: generate all → single WAV → play once
+                  try {
+                    const resp = await fetch('/api/tts', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ text: ttsText, language: langSel.value, emotion: ttsEmotion }),
+                    });
+                    if (resp.ok) {
+                      const data = await resp.json();
+                      if (data.ja_text) { cachedJaText = data.ja_text; jaDrawer.textContent = data.ja_text; }
+                      ttsLoading.style.display = 'none';
+                      cachedAudioUrls = [data.audio_url];
+                      stopTTS();
+                      currentAudio = new Audio(data.audio_url);
+                      isPlaying = true;
+                      currentAudio.play();
+                      currentAudio.onended = () => { isPlaying = false; currentAudio = null; ttsBtn.classList.remove('playing'); };
+                    }
+                  } catch (e) { console.error('Batch TTS failed:', e); }
                   ttsGenerating = false;
                   ttsLoading.style.display = 'none';
-                  // Cache from audioQueue (might already be cleared by stopTTS if user stopped)
+                } else {
+                  // Streaming mode: play segments as they arrive
+                  ttsOnJaText = (jaText) => {
+                    cachedJaText = jaText;
+                    jaDrawer.textContent = jaText;
+                  };
+                  ttsOnFirstAudio = () => {
+                    ttsLoading.style.display = 'none';
+                  };
+                  ttsOnComplete = () => {
+                    ttsBtn.classList.remove('playing');
+                    ttsGenerating = false;
+                    ttsLoading.style.display = 'none';
+                    if (cachedAudioUrls.length === 0) {
+                      cachedAudioUrls = audioQueue.filter(Boolean);
+                    }
+                  };
+
+                  await playTTSStream(ttsText, ttsEmotion);
                   if (cachedAudioUrls.length === 0) {
                     cachedAudioUrls = audioQueue.filter(Boolean);
                   }
-                };
-
-                await playTTSStream(ttsText, ttsEmotion);
-                // After stream completes, cache whatever we got
-                // (this runs after all SSE events processed, audioQueue still has values)
-                if (cachedAudioUrls.length === 0) {
-                  cachedAudioUrls = audioQueue.filter(Boolean);
                 }
               }
 
