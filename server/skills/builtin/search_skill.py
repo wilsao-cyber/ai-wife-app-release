@@ -55,6 +55,27 @@ class SearchSkill(BaseSkill):
             {
                 "type": "function",
                 "function": {
+                    "name": "video_search",
+                    "description": "搜尋影片 (Search for videos). 回傳影片的 URL 和嵌入碼。影片結果會顯示在聊天中。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "搜尋影片的關鍵字",
+                            },
+                            "num_results": {
+                                "type": "integer",
+                                "description": "回傳影片數量，預設 5",
+                            },
+                        },
+                        "required": ["query"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "web_fetch",
                     "description": "擷取指定網頁的文字內容 (Fetch and extract text content from a URL). 用於讀取搜尋結果的詳細內容。回傳的內容會顯示在面板中供用戶閱讀。",
                     "parameters": {
@@ -79,11 +100,15 @@ class SearchSkill(BaseSkill):
             )
             return result
         if tool_name == "image_search":
-            result = await self._tool.search_images(
+            return await self._tool.search_images(
                 query=kwargs["query"],
                 num_results=kwargs.get("num_results", 5),
             )
-            return result
+        if tool_name == "video_search":
+            return await self._tool.search_videos(
+                query=kwargs["query"],
+                num_results=kwargs.get("num_results", 5),
+            )
         if tool_name == "web_fetch":
             result = await self._tool.fetch_page_content(kwargs["url"])
             # Add rich text media for panel display

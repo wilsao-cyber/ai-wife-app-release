@@ -123,6 +123,37 @@ class WebSearchTool:
             logger.error(f"Image search failed: {e}")
             return {"error": str(e), "query": query}
 
+    async def search_videos(self, query: str, num_results: int = 5) -> dict:
+        """Search for videos using SearXNG."""
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(
+                    f"{self.searxng_url}/search",
+                    params={"q": query, "format": "json", "categories": "videos", "pageno": 1},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+            raw = data.get("results", [])[:num_results]
+            media = []
+            results = []
+            for item in raw:
+                url = item.get("url", "")
+                title = item.get("title", "")
+                thumbnail = item.get("thumbnail", "") or item.get("img_src", "")
+                iframe_src = item.get("iframe_src", "")
+                if url:
+                    results.append({"title": title, "url": url, "thumbnail": thumbnail, "iframe_src": iframe_src})
+                    if iframe_src:
+                        media.append({"type": "iframe", "url": iframe_src, "title": title, "thumbnail": thumbnail})
+                    elif thumbnail:
+                        media.append({"type": "image", "url": thumbnail, "alt": title})
+
+            return {"results": results, "total": len(results), "query": query, "media": media}
+        except Exception as e:
+            logger.error(f"Video search failed: {e}")
+            return {"error": str(e), "query": query}
+
     async def fetch_page_content(self, url: str) -> dict:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:

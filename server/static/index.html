@@ -1130,6 +1130,28 @@ async function sendMessage() {
                 fullText = evt.text;
                 aiSpan.textContent = fullText.replace(/\[emotion:\w+\]/g, '');
               }
+              // Convert URLs in text to clickable links
+              {
+                const text = aiSpan.textContent;
+                const urlRegex = /(https?:\/\/[^\s）\)]+)/g;
+                if (urlRegex.test(text)) {
+                  const parts = text.split(urlRegex);
+                  aiSpan.textContent = '';
+                  parts.forEach(part => {
+                    if (part.match(/^https?:\/\//)) {
+                      const a = document.createElement('a');
+                      a.href = part;
+                      a.textContent = part.length > 50 ? part.substring(0, 50) + '...' : part;
+                      a.target = '_blank';
+                      a.rel = 'noopener';
+                      a.style.cssText = 'color:#69b4ff;text-decoration:underline;word-break:break-all;';
+                      aiSpan.appendChild(a);
+                    } else {
+                      aiSpan.appendChild(document.createTextNode(part));
+                    }
+                  });
+                }
+              }
               if (evt.emotion) {
                 setEmotion(evt.emotion);
                 const tag = document.createElement('div');
@@ -1911,9 +1933,8 @@ function showLightboxItem() {
   lbImg.style.display = 'none';
   lbRichtext.style.display = 'none';
   lbRichtext.textContent = '';
-  // Remove any previous video
-  const oldVid = lightbox.querySelector('.lb-video');
-  if (oldVid) oldVid.remove();
+  // Remove any previous video/iframe
+  lightbox.querySelectorAll('.lb-video').forEach(el => el.remove());
 
   if (item.type === 'image') {
     lbImg.src = item.url;
@@ -1927,6 +1948,14 @@ function showLightboxItem() {
     vid.autoplay = true;
     vid.style.cssText = 'max-width:90%;max-height:90%;border-radius:8px;';
     lightbox.insertBefore(vid, lbNav);
+  } else if (item.type === 'iframe') {
+    const iframe = document.createElement('iframe');
+    iframe.className = 'lb-video';
+    iframe.src = item.url;
+    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+    iframe.allowFullscreen = true;
+    iframe.style.cssText = 'width:80vw;height:70vh;max-width:1200px;border:none;border-radius:8px;';
+    lightbox.insertBefore(iframe, lbNav);
   } else if (item.type === 'richtext') {
     if (item.html && item.html.includes('<')) {
       const iframe = document.createElement('iframe');
@@ -1976,6 +2005,27 @@ function renderMediaInChat(container, media) {
       video.style.maxWidth = '300px';
       video.style.borderRadius = '8px';
       container.appendChild(video);
+    } else if (item.type === 'iframe') {
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'cursor:pointer;max-width:300px;margin:6px 0;position:relative;';
+      if (item.thumbnail) {
+        const thumb = document.createElement('img');
+        thumb.className = 'media-thumb';
+        thumb.src = item.thumbnail;
+        thumb.alt = item.title || '';
+        wrapper.appendChild(thumb);
+        const play = document.createElement('div');
+        play.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;color:white;text-shadow:0 2px 8px rgba(0,0,0,0.8);';
+        play.textContent = '▶';
+        wrapper.appendChild(play);
+      } else {
+        const label = document.createElement('div');
+        label.className = 'content-preview';
+        label.textContent = '▶ ' + (item.title || 'Video');
+        wrapper.appendChild(label);
+      }
+      wrapper.onclick = () => openLightbox(media, idx);
+      container.appendChild(wrapper);
     } else if (item.type === 'richtext') {
       const card = document.createElement('div');
       card.className = 'content-preview';
