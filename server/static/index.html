@@ -576,6 +576,14 @@
         <input id="voice-test-text" type="text" value="ダーリン、おかえりなさい。今日はどんな一日だった？" placeholder="輸入測試文字..." style="width:100%;padding:8px;margin:4px 0;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;font-size:12px;outline:none;box-sizing:border-box;">
         <div id="voice-test-status" style="color:var(--text-muted);font-size:11px;margin:4px 0;"></div>
       </div>
+      <div style="margin:12px 0;border-top:1px solid var(--glass-border);padding-top:12px;">
+        <label style="color:var(--accent);font-size:13px;font-weight:bold;">⚙️ TTS 服務管理</label>
+        <div id="tts-service-status" style="color:var(--text-muted);font-size:11px;margin:6px 0;">狀態: 檢查中...</div>
+        <div style="display:flex;gap:8px;margin:8px 0;">
+          <button id="tts-kill-btn" style="flex:1;padding:8px;background:rgba(255,80,80,0.2);color:#ff6b6b;border:1px solid rgba(255,80,80,0.3);border-radius:6px;cursor:pointer;font-size:11px;">強制停止</button>
+          <button id="tts-restart-btn" style="flex:1;padding:8px;background:var(--accent-muted);color:var(--accent);border:1px solid var(--glass-border);border-radius:6px;cursor:pointer;font-size:11px;">重新啟動</button>
+        </div>
+      </div>
     </div>
     <div class="tab-body" id="tab-render">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
@@ -1938,6 +1946,57 @@ document.getElementById('voice-test-btn').onclick = async () => {
   } catch (e) { status.textContent = '❌ ' + e.message; }
   finally { btn.disabled = false; }
 };
+
+// TTS service management
+async function checkTTSStatus() {
+  const el = document.getElementById('tts-service-status');
+  try {
+    const resp = await fetch('/api/tts/status');
+    const data = await resp.json();
+    if (data.status === 'running') {
+      el.textContent = `狀態: ✅ 運行中 (${data.profiles} 個語音角色)`;
+      el.style.color = '#4caf50';
+    } else {
+      el.textContent = '狀態: ❌ 已停止';
+      el.style.color = '#ff6b6b';
+    }
+  } catch { el.textContent = '狀態: ⚠️ 無法連線'; el.style.color = '#ff9800'; }
+}
+
+document.getElementById('tts-kill-btn').onclick = async () => {
+  const btn = document.getElementById('tts-kill-btn');
+  btn.disabled = true; btn.textContent = '停止中...';
+  try {
+    await fetch('/api/tts/kill', { method: 'POST' });
+    btn.textContent = '✓ 已停止';
+    await checkTTSStatus();
+  } catch { btn.textContent = '失敗'; }
+  finally { setTimeout(() => { btn.disabled = false; btn.textContent = '強制停止'; }, 2000); }
+};
+
+document.getElementById('tts-restart-btn').onclick = async () => {
+  const btn = document.getElementById('tts-restart-btn');
+  btn.disabled = true; btn.textContent = '重啟中...（約30秒）';
+  document.getElementById('tts-service-status').textContent = '狀態: 🔄 重啟中...';
+  try {
+    const resp = await fetch('/api/tts/restart', { method: 'POST' });
+    const data = await resp.json();
+    if (data.ok) { btn.textContent = '✓ 已重啟'; }
+    else { btn.textContent = '⚠️ ' + (data.message || data.error); }
+    await checkTTSStatus();
+  } catch { btn.textContent = '失敗'; }
+  finally { setTimeout(() => { btn.disabled = false; btn.textContent = '重新啟動'; }, 3000); }
+};
+
+// Check TTS status when voice tab is opened
+const origTabClick = document.querySelectorAll('.tab-btn');
+origTabClick.forEach(btn => {
+  const origHandler = btn.onclick;
+  btn.onclick = (e) => {
+    if (origHandler) origHandler(e);
+    if (e.target.dataset.tab === 'tab-voice') checkTTSStatus();
+  };
+});
 
 document.getElementById('save-soul-btn').onclick = async () => {
   const val = document.getElementById('soul-editor').value;

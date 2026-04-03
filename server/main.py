@@ -576,6 +576,74 @@ async def voice_test(data: dict):
     return {"error": "Audio file not found"}
 
 
+# --- TTS Service Management ---
+
+
+@app.get("/api/tts/status")
+async def tts_status():
+    """Check Voicebox TTS service status."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{config.tts.voicebox_api_url}/profiles")
+            if resp.status_code == 200:
+                return {"status": "running", "profiles": len(resp.json())}
+    except Exception:
+        pass
+    return {"status": "stopped"}
+
+
+@app.post("/api/tts/kill")
+async def tts_kill():
+    """Force kill Voicebox TTS process."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["pkill", "-9", "-f", "backend.main --port 17493"],
+            capture_output=True, text=True
+        )
+        logger.info("Voicebox TTS killed")
+        return {"ok": True, "message": "Voicebox TTS stopped"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/tts/restart")
+async def tts_restart():
+    """Restart Voicebox TTS service."""
+    import subprocess
+    # Kill existing
+    subprocess.run(["pkill", "-9", "-f", "backend.main --port 17493"],
+                   capture_output=True)
+    await asyncio.sleep(1)
+
+    # Restart
+    try:
+        proc = subprocess.Popen(
+            ["bash", "-c",
+             "cd /home/wilsao6666/voicebox && source backend/venv/bin/activate && "
+             "python -m backend.main --port 17493"],
+            stdout=open("../logs/voicebox.log", "a"),
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        logger.info(f"Voicebox TTS restarted (PID: {proc.pid})")
+        # Wait for it to come up
+        import httpx
+        for _ in range(30):
+            await asyncio.sleep(1)
+            try:
+                async with httpx.AsyncClient(timeout=3) as client:
+                    resp = await client.get(f"{config.tts.voicebox_api_url}/profiles")
+                    if resp.status_code == 200:
+                        return {"ok": True, "message": f"Voicebox TTS running (PID: {proc.pid})"}
+            except Exception:
+                continue
+        return {"ok": False, "message": "Voicebox started but not responding after 30s"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/api/sfx/{sfx_id}")
 async def get_sfx(sfx_id: str):
     """Serve SFX audio file by catalog ID."""

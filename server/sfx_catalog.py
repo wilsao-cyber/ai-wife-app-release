@@ -13,7 +13,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 import os
-SFX_ROOT = Path(os.getenv("SFX_ROOT", "/home/wilsao6666/Music/vfx"))
+SFX_ROOT = Path(os.getenv("SFX_ROOT", os.path.join(os.path.dirname(__file__), "..", "sfx_library")))
 AUDIO_EXTS = {".wav", ".mp3", ".ogg", ".flac", ".m4a"}
 
 
