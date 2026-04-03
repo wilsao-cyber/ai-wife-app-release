@@ -1131,7 +1131,11 @@ function playNext() {
     return;
   }
   const url = audioQueue[playIndex];
-  if (!url) return; // not yet arrived — will be triggered on next 'audio' event
+  if (!url) {
+    // Not yet arrived — mark as not playing so underrun recovery can trigger
+    isPlaying = false;
+    return;
+  }
 
   if (currentAudio) { currentAudio.pause(); }
   currentAudio = new Audio(url);
