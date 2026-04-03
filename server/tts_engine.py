@@ -302,7 +302,8 @@ class TTSEngine:
         return ja_text, sentences, instruct, profile_id
 
     async def _voicebox_generate_one(
-        self, client, sentence: str, profile_id: str, instruct: str
+        self, client, sentence: str, profile_id: str, instruct: str,
+        emotion: str = "neutral"
     ) -> Optional[Path]:
         """Generate a single sentence via Voicebox HTTP. Returns audio Path or None."""
         import uuid
@@ -344,6 +345,15 @@ class TTSEngine:
         out_name = f"{uuid.uuid4()}.wav"
         out_path = self.output_dir / out_name
         shutil.copy2(str(source), str(out_path))
+
+        # Apply audio post-processing based on emotion
+        if getattr(self.config, "audio_fx_enabled", True):
+            try:
+                from audio_fx import process_wav
+                process_wav(out_path, emotion)
+            except Exception as e:
+                logger.warning(f"Audio FX failed: {e}")
+
         return out_path
 
     async def synthesize_stream(
@@ -371,7 +381,7 @@ class TTSEngine:
                 async with semaphore:
                     async with httpx.AsyncClient(timeout=120.0) as client:
                         results[idx] = await self._voicebox_generate_one(
-                            client, sent, profile_id, instruct
+                            client, sent, profile_id, instruct, emotion=emotion
                         )
             except Exception as e:
                 logger.error(f"Sentence {idx} generation failed: {e}")
@@ -424,7 +434,7 @@ class TTSEngine:
                     async with semaphore:
                         async with httpx.AsyncClient(timeout=120.0) as client:
                             results[idx] = await self._voicebox_generate_one(
-                                client, sent, profile_id, instruct
+                                client, sent, profile_id, instruct, emotion=emotion
                             )
                 except Exception as e:
                     logger.error(f"Sentence {idx} generation failed: {e}")

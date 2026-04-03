@@ -48,6 +48,7 @@ class TTSConfig(BaseSettings):
     voicebox_horny_profile_id: str = ""
     voicebox_model_size: str = "1.7B"
     voicebox_concurrency: int = 2
+    audio_fx_enabled: bool = True
 
 
 class STTConfig(BaseSettings):
