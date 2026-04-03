@@ -1519,6 +1519,14 @@ async function sendMessage() {
                             renderMediaInChat(toolResultsContainer, r.media);
                           }
                           handleSfxResult(r);
+                          if (r && r.scene_audio) {
+                            stopTTS();
+                            const sa = new Audio(r.scene_audio);
+                            sa.play().catch(e => console.warn('Scene audio blocked:', e));
+                            currentAudio = sa;
+                            isPlaying = true;
+                            sa.onended = () => { isPlaying = false; currentAudio = null; };
+                          }
                         } else if (cEvt.type === 'chunk') {
                           confirmText += cEvt.data;
                           confirmSpan.textContent = confirmText.replace(/\[emotion:\w+\]/g, '');
@@ -1565,6 +1573,15 @@ async function sendMessage() {
               }
               // Handle SFX playback from tool results
               handleSfxResult(r);
+              // Handle scene audio (mixed TTS + SFX)
+              if (r && r.scene_audio) {
+                stopTTS();  // stop any streaming TTS
+                const sceneAudio = new Audio(r.scene_audio);
+                sceneAudio.play().catch(e => console.warn('Scene audio blocked:', e));
+                currentAudio = sceneAudio;
+                isPlaying = true;
+                sceneAudio.onended = () => { isPlaying = false; currentAudio = null; };
+              }
               scrollToBottom();
               break;
 
