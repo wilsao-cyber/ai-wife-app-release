@@ -859,6 +859,59 @@ async function loadModel(url) {
     if (!vrm) { showError('No VRM data found'); return; }
     VRMUtils.rotateVRM0(vrm);
     currentVrm = vrm;
+
+    // Enhance MToon materials for anime look (UTS3-style)
+    vrm.scene.traverse((obj) => {
+      if (!obj.isMesh) return;
+      const mat = obj.material;
+      if (!mat) return;
+
+      // MToon materials (from VRM)
+      if (mat.isMToonMaterial || mat.type === 'ShaderMaterial') {
+        // Warmer, more vivid shadow color (instead of grey)
+        if (mat.uniforms) {
+          // MToon shade color → warm pinkish shadow
+          if (mat.uniforms.shadeColorFactor) {
+            const sc = mat.uniforms.shadeColorFactor.value;
+            if (sc && sc.isColor) {
+              sc.lerp(new THREE.Color(0xffc0a0), 0.3); // blend toward warm
+            }
+          }
+          // Boost shading toony for crisper cel-shade
+          if (mat.uniforms.shadingToonyFactor) {
+            mat.uniforms.shadingToonyFactor.value = Math.max(mat.uniforms.shadingToonyFactor.value, 0.8);
+          }
+          // Shift shading to show more lit area (less shadow)
+          if (mat.uniforms.shadingShiftFactor) {
+            mat.uniforms.shadingShiftFactor.value = Math.min(mat.uniforms.shadingShiftFactor.value, -0.1);
+          }
+          // Parametric rim light
+          if (mat.uniforms.parametricRimColorFactor) {
+            mat.uniforms.parametricRimColorFactor.value = new THREE.Color(0xffd0c0);
+          }
+          if (mat.uniforms.parametricRimFresnelPowerFactor) {
+            mat.uniforms.parametricRimFresnelPowerFactor.value = 3.0;
+          }
+          if (mat.uniforms.parametricRimLiftFactor) {
+            mat.uniforms.parametricRimLiftFactor.value = 0.3;
+          }
+        }
+
+        // Increase emissive for slight glow
+        if (mat.emissive) {
+          mat.emissiveIntensity = Math.max(mat.emissiveIntensity || 0, 0.05);
+        }
+      }
+
+      // Standard materials — boost saturation
+      if (mat.isMeshStandardMaterial || mat.isMeshPhongMaterial) {
+        if (mat.color) {
+          // Slightly warm shift
+          mat.color.offsetHSL(0.02, 0.1, 0.02);
+        }
+      }
+    });
+
     scene.add(vrm.scene);
 
     // Auto-center camera
