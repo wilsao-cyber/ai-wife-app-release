@@ -425,8 +425,8 @@
     <div id="setup-cloud-fields" style="display:none;">
       <div class="setup-field">
         <label>雲端模型</label>
-        <input id="setup-cloud-model-search" type="text" placeholder="搜尋模型..." style="width:100%;padding:8px;margin-bottom:4px;background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;box-sizing:border-box;">
-        <select id="setup-cloud-model" size="6" style="width:100%;padding:4px;background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;box-sizing:border-box;overflow-y:auto;">
+        <input id="setup-cloud-model-search" type="text" placeholder="搜尋模型..." style="width:100%;padding:10px 14px;margin-bottom:6px;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:var(--radius-sm);box-sizing:border-box;outline:none;font-size:13px;">
+        <select id="setup-cloud-model" style="width:100%;padding:10px 14px;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:var(--radius-sm);box-sizing:border-box;font-size:13px;outline:none;">
           <option value="">載入中...</option>
         </select>
       </div>
@@ -443,8 +443,8 @@
         <option value="dashscope">DashScope</option>
         <option value="openai">OpenAI</option>
       </select>
-      <input id="setup-fallback-model-search" type="text" placeholder="搜尋模型..." style="width:100%;padding:8px;margin:4px 0;background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;box-sizing:border-box;">
-      <select id="setup-fallback-model" size="4" style="width:100%;padding:4px;background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;box-sizing:border-box;overflow-y:auto;">
+      <input id="setup-fallback-model-search" type="text" placeholder="搜尋模型..." style="width:100%;padding:10px 14px;margin:4px 0;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:var(--radius-sm);box-sizing:border-box;font-size:13px;outline:none;">
+      <select id="setup-fallback-model" style="width:100%;padding:10px 14px;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:var(--radius-sm);box-sizing:border-box;font-size:13px;outline:none;">
         <option value="">選擇 Fallback provider 後載入</option>
       </select>
       <input id="setup-fallback-key" type="password" placeholder="Fallback API Key" style="width:100%;padding:8px;margin:4px 0;background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;box-sizing:border-box;">
@@ -1835,7 +1835,6 @@ enterBtn.addEventListener('click', async () => {
         enterBtn.disabled = false;
         return;
       }
-      document.getElementById('model-selector').value = 'cloud:' + cloudModel;
     } catch (e) {
       showToast('連線失敗');
       enterBtn.textContent = '進入 💕';
@@ -1844,7 +1843,6 @@ enterBtn.addEventListener('click', async () => {
     }
   } else {
     localStorage.setItem('ai-wife-model', setupModel.value);
-    document.getElementById('model-selector').value = setupModel.value;
   }
 
   setupScreen.classList.add('hidden');
