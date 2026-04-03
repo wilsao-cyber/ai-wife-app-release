@@ -1118,14 +1118,19 @@ function playNext() {
 }
 
 async function playTTSStream(text, emotion = 'neutral') {
-  stopTTS();
+  // Stop any previous playback but preserve callbacks (set by doPlayTTS before this call)
+  if (streamAbortController) { streamAbortController.abort(); streamAbortController = null; }
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+  audioQueue = [];
+  playIndex = 0;
+  streamDone = false;
+  isPlaying = false;
+  // NOTE: do NOT reset ttsOnFirstAudio/ttsOnJaText/ttsOnComplete here — they are set by the caller
+
   const cleanText = text.replace(/\[emotion:\w+\]/g, '').trim();
   if (!cleanText) return;
 
   streamAbortController = new AbortController();
-  audioQueue = [];
-  playIndex = 0;
-  streamDone = false;
   let sseBuffer = '';
   let totalExpected = 0;
   let playbackStarted = false;
