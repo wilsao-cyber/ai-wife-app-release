@@ -106,6 +106,7 @@ class AgentOrchestrator:
         language: str = "zh-TW",
         client_id: str = "default",
         mode_override: Optional[str] = None,
+        use_fallback: bool = False,
     ):
         """Main entry point — streaming version."""
         mode = mode_override or self._classify_intent_fast(message)
@@ -121,16 +122,17 @@ class AgentOrchestrator:
                     "model": str(self.llm.model),
                     "intent_keywords": matched,
                     "timestamp": time.time(),
+                    "use_fallback": use_fallback,
                 },
             },
             ensure_ascii=False,
         )
 
         if mode == "chat":
-            async for chunk in self._chat_mode_stream(message, language, client_id):
+            async for chunk in self._chat_mode_stream(message, language, client_id, use_fallback=use_fallback):
                 yield chunk
         else:
-            async for chunk in self._assist_mode_stream(message, language, client_id):
+            async for chunk in self._assist_mode_stream(message, language, client_id, use_fallback=use_fallback):
                 yield chunk
 
     def _get_display_hint(self, tool_name: str, result: dict) -> dict | None:
@@ -333,7 +335,7 @@ class AgentOrchestrator:
             "mode": "chat",
         }
 
-    async def _chat_mode_stream(self, message: str, language: str, client_id: str):
+    async def _chat_mode_stream(self, message: str, language: str, client_id: str, use_fallback: bool = False):
         """Fast chat — streaming."""
         t0 = time.time()
         messages = await self._build_chat_messages(message, language, client_id)
@@ -341,7 +343,7 @@ class AgentOrchestrator:
         full_response = ""
         think_chars = 0
         stripper = _ThinkStripper()
-        stream_gen = await self.llm.chat(messages, think=False, stream=True)
+        stream_gen = await self.llm.chat(messages, think=False, stream=True, use_fallback=use_fallback)
         async for chunk in stream_gen:
             visible = stripper.feed(chunk)
             think_chars += len(chunk) - len(visible)
@@ -428,7 +430,7 @@ class AgentOrchestrator:
             clean_text, emotion = self._extract_emotion(content)
             return {"text": clean_text, "emotion": emotion, "mode": "assist"}
 
-    async def _assist_mode_stream(self, message: str, language: str, client_id: str):
+    async def _assist_mode_stream(self, message: str, language: str, client_id: str, use_fallback: bool = False):
         """Streaming assist — notice + planning with confirmation."""
         notice = self._get_assist_notice(language)
         yield json.dumps({"type": "notice", "text": notice}, ensure_ascii=False)
@@ -436,7 +438,7 @@ class AgentOrchestrator:
         messages = await self._build_assist_messages(message, language, client_id)
         tools = self.skills.get_tool_definitions()
 
-        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=512)
+        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=512, use_fallback=use_fallback)
 
         if isinstance(result, dict) and result.get("tool_calls"):
             plan_text = result.get("content", "")

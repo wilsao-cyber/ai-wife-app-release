@@ -66,7 +66,21 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         stream: bool = False,
         think: bool = True,
+        use_fallback: bool = False,
     ) -> str | dict | AsyncGenerator[str, None]:
+        if use_fallback and self.has_fallback:
+            payload = {
+                "model": self.fallback_model,
+                "messages": messages,
+                "temperature": temperature or self.config.temperature,
+                "max_tokens": max_tokens or self.config.max_tokens,
+                "stream": stream,
+            }
+            if tools:
+                payload["tools"] = tools
+            if stream:
+                return self._fallback_stream(payload)
+            return await self._fallback_complete(payload)
         if self._is_ollama:
             return await self._ollama_chat(
                 messages, tools, temperature, max_tokens, stream, think

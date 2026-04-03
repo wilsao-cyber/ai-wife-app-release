@@ -107,8 +107,8 @@
   .render-slider-row .slider-val { font-size: 10px; color: var(--text-muted); width: 35px; text-align: right; }
   .render-section { font-size: 11px; color: var(--accent); font-weight: 600; margin-top: 8px; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 1px solid var(--glass-border); }
 
-  #tts-toggle { cursor: pointer; font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--glass-border); background: none; color: var(--text-secondary); margin-left: 2px; }
-  #tts-toggle.on { color: var(--accent); border-color: var(--accent); }
+  #tts-toggle, #fallback-toggle { cursor: pointer; font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--glass-border); background: none; color: var(--text-secondary); margin-left: 2px; }
+  #tts-toggle.on, #fallback-toggle.on { color: var(--accent); border-color: var(--accent); }
 
   /* ── Chat Panel (Overlay Right) ──────────────────────────────────── */
   #chat-panel {
@@ -390,6 +390,7 @@
       <option value="en">English</option>
     </select>
     <button id="tts-toggle" class="on" title="語音開關">🔊</button>
+    <button id="fallback-toggle" title="使用備用模型 (無審查)">🔓</button>
     <select id="scene-selector" title="切換場景">
       <option value="home">🏠 居家</option>
       <option value="sakura">🌸 櫻花</option>
@@ -1086,6 +1087,18 @@ ttsToggleBtn.onclick = () => {
   if (!ttsEnabled) { stopTTS(); }
 };
 
+// Fallback provider toggle (uncensored mode)
+let useFallback = localStorage.getItem('ai-wife-fallback') === 'on';
+const fallbackToggleBtn = document.getElementById('fallback-toggle');
+fallbackToggleBtn.className = useFallback ? 'on' : '';
+fallbackToggleBtn.textContent = useFallback ? '🔓' : '🔒';
+fallbackToggleBtn.onclick = () => {
+  useFallback = !useFallback;
+  localStorage.setItem('ai-wife-fallback', useFallback ? 'on' : 'off');
+  fallbackToggleBtn.className = useFallback ? 'on' : '';
+  fallbackToggleBtn.textContent = useFallback ? '🔓' : '🔒';
+};
+
 function playNext() {
   if (playIndex >= audioQueue.length) {
     if (streamDone) {
@@ -1356,7 +1369,8 @@ async function sendMessage() {
         message: text,
         language: langSel.value,
         mode_override: modeSel.value === 'auto' ? null : modeSel.value,
-        client_id: CLIENT_ID
+        client_id: CLIENT_ID,
+        use_fallback: useFallback,
       })
     });
 
