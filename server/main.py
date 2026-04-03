@@ -451,6 +451,78 @@ async def tts_stream(data: dict):
     )
 
 
+# --- Voice Profile Management ---
+
+
+@app.get("/api/voice/profiles")
+async def voice_profiles():
+    """List all Voicebox profiles with active status."""
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{config.tts.voicebox_api_url}/profiles")
+            resp.raise_for_status()
+            profiles = resp.json()
+    except Exception as e:
+        return {"profiles": [], "error": str(e)}
+
+    return {
+        "profiles": profiles,
+        "active_normal": config.tts.voicebox_profile_id,
+        "active_horny": config.tts.voicebox_horny_profile_id,
+    }
+
+
+@app.post("/api/voice/switch")
+async def voice_switch(data: dict):
+    """Switch active voice profile."""
+    profile_id = data.get("profile_id", "")
+    mode = data.get("mode", "normal")
+    if mode == "normal":
+        config.tts.voicebox_profile_id = profile_id
+    else:
+        config.tts.voicebox_horny_profile_id = profile_id
+    return {"ok": True, "mode": mode, "profile_id": profile_id}
+
+
+@app.post("/api/voice/test")
+async def voice_test(data: dict):
+    """Test generate with a profile."""
+    import httpx
+
+    profile_id = data.get("profile_id", "")
+    text = data.get("text", "こんにちは、今日もいい天気だね。")
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                f"{config.tts.voicebox_api_url}/generate",
+                json={
+                    "profile_id": profile_id,
+                    "text": text,
+                    "language": "ja",
+                    "instruct": "甘えた可愛い女の子の声で、愛情と温もりを込めて、ゆっくり話してください",
+                },
+            )
+            resp.raise_for_status()
+            gen = resp.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+    # Copy generated audio to our output dir for serving
+    from pathlib import Path
+    import shutil
+
+    src = Path(gen.get("audio_path", ""))
+    if not src.is_absolute():
+        src = Path(config.tts.voicebox_api_url.replace("http://localhost:17493", "/home/wilsao6666/voicebox")) / src
+    if src.exists():
+        dst = Path("./output/audio") / src.name
+        shutil.copy2(str(src), str(dst))
+        return {"audio_url": f"/audio/{src.name}", "duration": gen.get("duration", 0)}
+    return {"error": "Audio file not found"}
+
+
 @app.get("/audio/{filename}")
 async def get_audio(filename: str):
     return FileResponse(f"./output/audio/{filename}")

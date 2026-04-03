@@ -509,6 +509,7 @@
       <button class="tab-btn" data-tab="tab-soul">核心靈魂</button>
       <button class="tab-btn" data-tab="tab-heartbeat">定時任務</button>
       <button class="tab-btn" data-tab="tab-provider">LLM 供應商</button>
+      <button class="tab-btn" data-tab="tab-voice">語音</button>
       <button class="tab-btn" data-tab="tab-render">渲染</button>
     </div>
     <div class="tab-body active" id="tab-memory">
@@ -553,6 +554,27 @@
       <input id="provider-api-key" type="password" placeholder="sk-..." style="width:100%;padding:8px;margin:8px 0;background:#1a1a2e;color:#eee;border:1px solid #555;border-radius:6px;box-sizing:border-box;">
       <div id="provider-status" style="color:#aaa;font-size:12px;margin:4px 0;"></div>
       <button id="save-provider-btn" style="margin-top:10px;width:100%;padding:10px;background:var(--accent);color:var(--bg-primary);border:none;border-radius:6px;cursor:pointer;font-weight:600;">套用設定</button>
+    </div>
+    <div class="tab-body" id="tab-voice">
+      <label style="color:var(--accent);font-size:13px;font-weight:bold;">🎙️ 語音角色</label>
+      <div style="margin:8px 0;">
+        <label style="color:var(--text-secondary);font-size:11px;">正常語音</label>
+        <select id="voice-normal-select" style="width:100%;padding:8px;margin:4px 0;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;font-size:12px;outline:none;"></select>
+      </div>
+      <div style="margin:8px 0;">
+        <label style="color:var(--text-secondary);font-size:11px;">親密語音</label>
+        <select id="voice-horny-select" style="width:100%;padding:8px;margin:4px 0;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;font-size:12px;outline:none;"></select>
+      </div>
+      <button id="voice-save-btn" style="width:100%;padding:10px;margin:8px 0;background:var(--accent);color:var(--bg-primary);border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;">套用語音設定</button>
+      <div style="margin:12px 0;border-top:1px solid var(--glass-border);padding-top:12px;">
+        <label style="color:var(--accent);font-size:13px;font-weight:bold;">🔊 試聽</label>
+        <div style="display:flex;gap:8px;margin:8px 0;">
+          <select id="voice-test-profile" style="flex:1;padding:6px;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;font-size:11px;outline:none;"></select>
+          <button id="voice-test-btn" style="padding:6px 14px;background:var(--accent-muted);color:var(--accent);border:1px solid var(--glass-border);border-radius:6px;cursor:pointer;font-size:11px;">試聽</button>
+        </div>
+        <input id="voice-test-text" type="text" value="ダーリン、おかえりなさい。今日はどんな一日だった？" placeholder="輸入測試文字..." style="width:100%;padding:8px;margin:4px 0;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;font-size:12px;outline:none;box-sizing:border-box;">
+        <div id="voice-test-status" style="color:var(--text-muted);font-size:11px;margin:4px 0;"></div>
+      </div>
     </div>
     <div class="tab-body" id="tab-render">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
@@ -1758,7 +1780,69 @@ async function loadSettingsData() {
 
   // Provider
   loadProviderSettings();
+
+  // Voice profiles
+  try {
+    const vRes = await fetch('/api/voice/profiles');
+    if (vRes.ok) {
+      const vData = await vRes.json();
+      const profiles = vData.profiles || [];
+      const activeNormal = vData.active_normal || '';
+      const activeHorny = vData.active_horny || '';
+
+      const normalSel = document.getElementById('voice-normal-select');
+      const hornySel = document.getElementById('voice-horny-select');
+      const testSel = document.getElementById('voice-test-profile');
+
+      [normalSel, hornySel, testSel].forEach(sel => { sel.innerHTML = ''; });
+
+      profiles.forEach(p => {
+        const opt = (sel, selected) => {
+          const o = document.createElement('option');
+          o.value = p.id;
+          o.textContent = `${p.name} (${p.language || 'ja'})`;
+          if (selected) o.selected = true;
+          sel.appendChild(o);
+        };
+        opt(normalSel, p.id === activeNormal);
+        opt(hornySel, p.id === activeHorny);
+        opt(testSel, false);
+      });
+    }
+  } catch (e) { console.error('Load voice profiles failed', e); }
 }
+
+// Voice profile handlers
+document.getElementById('voice-save-btn').onclick = async () => {
+  const normalId = document.getElementById('voice-normal-select').value;
+  const hornyId = document.getElementById('voice-horny-select').value;
+  const btn = document.getElementById('voice-save-btn');
+  btn.textContent = '切換中...';
+  try {
+    await fetch('/api/voice/switch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile_id: normalId, mode: 'normal' }) });
+    await fetch('/api/voice/switch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile_id: hornyId, mode: 'horny' }) });
+    btn.textContent = '✓ 已套用';
+    setTimeout(() => { btn.textContent = '套用語音設定'; }, 2000);
+  } catch (e) { btn.textContent = '失敗'; }
+};
+
+document.getElementById('voice-test-btn').onclick = async () => {
+  const profileId = document.getElementById('voice-test-profile').value;
+  const text = document.getElementById('voice-test-text').value || 'こんにちは';
+  const status = document.getElementById('voice-test-status');
+  const btn = document.getElementById('voice-test-btn');
+  btn.disabled = true;
+  status.textContent = '生成中...';
+  try {
+    const resp = await fetch('/api/voice/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile_id: profileId, text }) });
+    const data = await resp.json();
+    if (data.error) { status.textContent = '❌ ' + data.error; return; }
+    status.textContent = `✓ ${data.duration?.toFixed(1)}s`;
+    const audio = new Audio(data.audio_url);
+    audio.play();
+  } catch (e) { status.textContent = '❌ ' + e.message; }
+  finally { btn.disabled = false; }
+};
 
 document.getElementById('save-soul-btn').onclick = async () => {
   const val = document.getElementById('soul-editor').value;
