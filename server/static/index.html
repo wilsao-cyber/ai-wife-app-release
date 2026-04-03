@@ -1121,58 +1121,68 @@ fallbackToggleBtn.onclick = () => {
   fallbackToggleBtn.textContent = useFallback ? '🔓' : '🔒';
 };
 
-function playNext() {
-  if (playIndex >= audioQueue.length) {
-    if (streamDone) {
-      isPlaying = false;
-      currentAudio = null;
-      if (ttsOnComplete) ttsOnComplete();
-    }
-    return;
-  }
-  const url = audioQueue[playIndex];
-  if (!url) {
-    // Not yet arrived — mark as not playing so underrun recovery can trigger
-    isPlaying = false;
+// ── Streaming TTS Player (state machine) ────────────────────────────
+// States: idle → playing → waiting_for_audio → playing → ... → complete
+// Single function `tryPlayNext` handles ALL state transitions.
+
+function tryPlayNext() {
+  // Case 1: currently playing — do nothing, onended will call us again
+  if (currentAudio && !currentAudio.paused && !currentAudio.ended) return;
+
+  // Case 2: there's audio ready at playIndex — play it
+  if (playIndex < audioQueue.length && audioQueue[playIndex]) {
+    if (currentAudio) { currentAudio.pause(); }
+    const url = audioQueue[playIndex];
+    console.log(`[TTS] Playing segment ${playIndex}/${audioQueue.length}: ${url}`);
+    currentAudio = new Audio(url);
+    isPlaying = true;
+    currentAudio.onended = () => {
+      console.log(`[TTS] Segment ${playIndex} ended`);
+      playIndex++;
+      tryPlayNext();
+    };
+    currentAudio.onerror = () => {
+      console.warn(`[TTS] Segment ${playIndex} error, skipping`);
+      playIndex++;
+      tryPlayNext();
+    };
+    currentAudio.play().catch(e => {
+      console.warn('[TTS] play() blocked:', e);
+      playIndex++;
+      tryPlayNext();
+    });
     return;
   }
 
-  if (currentAudio) { currentAudio.pause(); }
-  currentAudio = new Audio(url);
-  isPlaying = true;
-  currentAudio.onended = () => {
-    playIndex++;
-    playNext();
-  };
-  currentAudio.onerror = () => {
-    console.warn('Audio segment ' + playIndex + ' failed, skipping');
-    playIndex++;
-    playNext();
-  };
-  currentAudio.play().catch(e => {
-    console.warn('Audio play blocked:', e);
-    playIndex++;
-    playNext();
-  });
+  // Case 3: no audio ready, stream is done — we're finished
+  if (streamDone) {
+    console.log(`[TTS] Complete. Played ${playIndex} segments.`);
+    isPlaying = false;
+    currentAudio = null;
+    if (ttsOnComplete) ttsOnComplete();
+    return;
+  }
+
+  // Case 4: no audio ready, stream still going — wait (underrun)
+  console.log(`[TTS] Waiting for segment ${playIndex}...`);
+  isPlaying = false;
 }
 
 async function playTTSStream(text, emotion = 'neutral') {
-  // Stop any previous playback but preserve callbacks (set by doPlayTTS before this call)
+  // Stop any previous playback but preserve callbacks
   if (streamAbortController) { streamAbortController.abort(); streamAbortController = null; }
   if (currentAudio) { currentAudio.pause(); currentAudio = null; }
   audioQueue = [];
   playIndex = 0;
   streamDone = false;
   isPlaying = false;
-  // NOTE: do NOT reset ttsOnFirstAudio/ttsOnJaText/ttsOnComplete here — they are set by the caller
 
   const cleanText = text.replace(/\[emotion:\w+\]/g, '').trim();
   if (!cleanText) return;
 
   streamAbortController = new AbortController();
   let sseBuffer = '';
-  let totalExpected = 0;
-  let playbackStarted = false;
+  let firstAudioFired = false;
 
   try {
     const resp = await fetch('/api/tts/stream', {
@@ -1190,10 +1200,9 @@ async function playTTSStream(text, emotion = 'neutral') {
       const { done, value } = await reader.read();
       if (done) break;
 
-      // Buffer TCP chunks — split on \n\n, keep incomplete tail
       sseBuffer += decoder.decode(value, { stream: true });
       const parts = sseBuffer.split('\n\n');
-      sseBuffer = parts.pop(); // incomplete tail stays in buffer
+      sseBuffer = parts.pop();
 
       for (const block of parts) {
         const dataLine = block.split('\n').find(l => l.startsWith('data: '));
@@ -1203,43 +1212,33 @@ async function playTTSStream(text, emotion = 'neutral') {
 
         if (event.type === 'ja_text') {
           if (ttsOnJaText) ttsOnJaText(event.data);
+
         } else if (event.type === 'audio') {
-          totalExpected = event.total;
           audioQueue[event.index] = event.url;
-          // Start playback as soon as first audio arrives
-          const buffered = audioQueue.filter(Boolean).length;
-          if (!playbackStarted && buffered >= 1) {
-            playbackStarted = true;
+          console.log(`[TTS] Received audio ${event.index}/${event.total}`);
+          if (!firstAudioFired) {
+            firstAudioFired = true;
             if (ttsOnFirstAudio) ttsOnFirstAudio();
-            playNext();
-          } else if (playbackStarted && playIndex < audioQueue.length && audioQueue[playIndex] && !isPlaying) {
-            // Underrun recovery: player was waiting, new audio arrived
-            playNext();
           }
+          // Always try to advance playback
+          tryPlayNext();
+
         } else if (event.type === 'done' || event.type === 'cancelled') {
           streamDone = true;
-          if (!playbackStarted && audioQueue.filter(Boolean).length > 0) {
-            playbackStarted = true;
-            if (ttsOnFirstAudio) ttsOnFirstAudio();
-            playNext();
-          } else if (!isPlaying && playIndex < audioQueue.length && audioQueue[playIndex]) {
-            // Stream done, not currently playing, but there's unplayed audio — play it
-            playNext();
-          } else if (!isPlaying) {
-            if (ttsOnComplete) ttsOnComplete();
-          }
-          // else: isPlaying=true, playNext will handle via onended
+          console.log(`[TTS] Stream done. Queue: ${audioQueue.length}, playIndex: ${playIndex}`);
+          tryPlayNext();
+
         } else if (event.type === 'error') {
-          console.error('TTS server error:', event.message);
+          console.error('[TTS] Server error:', event.message);
           streamDone = true;
-          if (ttsOnComplete) ttsOnComplete();
+          tryPlayNext();
         }
       }
     }
   } catch (err) {
-    if (err.name !== 'AbortError') console.error('TTS stream error:', err);
+    if (err.name !== 'AbortError') console.error('[TTS] Stream error:', err);
     streamDone = true;
-    if (ttsOnComplete) ttsOnComplete();
+    tryPlayNext();
   }
 }
 
@@ -1658,7 +1657,7 @@ async function sendMessage() {
                 streamDone = true;
                 ttsBtn.classList.add('playing');
                 ttsOnComplete = () => { ttsBtn.classList.remove('playing'); };
-                playNext();
+                tryPlayNext();
               }
 
               async function doPlayTTS() {
