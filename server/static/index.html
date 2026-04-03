@@ -250,16 +250,18 @@
 
   /* ── Settings Modal ──────────────────────────────────────────────── */
   #settings-modal {
-    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-    background: rgba(28, 30, 42, 0.8); backdrop-filter: blur(4px);
-    display: flex; align-items: center; justify-content: center; z-index: 100;
+    position: fixed; top: 0; right: 0; width: 340px; height: 100vh;
+    background: rgba(42, 45, 62, 0.85); backdrop-filter: blur(16px);
+    z-index: 100; transform: translateX(100%);
+    transition: transform 0.3s ease;
+    border-left: 1px solid var(--glass-border);
   }
-  #settings-modal.hidden { display: none; }
+  #settings-modal.visible { transform: translateX(0); }
+  #settings-modal.hidden { transform: translateX(100%); }
   .modal-content {
-    background: var(--bg-secondary); width: 90%; max-width: 500px; height: 80%;
-    border-radius: var(--radius-md); border: 1px solid var(--glass-border);
+    background: transparent; width: 100%; height: 100%;
+    border-radius: 0; border: none;
     display: flex; flex-direction: column; overflow: hidden;
-    box-shadow: var(--shadow-lg);
   }
   .modal-header { padding: 16px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; }
   .modal-header h2 { font-size: 16px; color: var(--accent); font-weight: 600; }
@@ -1511,10 +1513,10 @@ inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage();
 // ── Settings Panel ──────────────────────────────────────────────────
 const settingsModal = document.getElementById('settings-modal');
 document.getElementById('settings-btn').onclick = () => {
-  settingsModal.classList.remove('hidden');
+  settingsModal.classList.remove('hidden'); settingsModal.classList.add('visible');
   loadSettingsData();
 };
-document.getElementById('close-settings').onclick = () => settingsModal.classList.add('hidden');
+document.getElementById('close-settings').onclick = () => settingsModal.classList.remove('visible'); settingsModal.classList.add('hidden');
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.onclick = (e) => {
@@ -2181,7 +2183,7 @@ const returnBtn = document.createElement('button');
 returnBtn.className = 'tab-btn';
 returnBtn.textContent = '⚙️ 系統';
 returnBtn.onclick = () => {
-  settingsModal.classList.add('hidden');
+  settingsModal.classList.remove('visible'); settingsModal.classList.add('hidden');
   setupScreen.classList.remove('hidden');
   enterBtn.classList.remove('ready');
   ['llm','tts','stt','skills'].forEach(t => setStatus('test-' + t, 'pending'));
