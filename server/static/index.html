@@ -43,7 +43,7 @@
   #vrm-container {
     position: absolute; inset: 0; z-index: 0;
   }
-  #vrm-container canvas { display: block; width: 100%; height: 100%; }
+  #vrm-container canvas { display: block; width: 100%; height: 100%; position: relative; z-index: 0; }
 
   /* Gradient overlay for chat readability */
   #vrm-container::after {
@@ -379,6 +379,12 @@
       <option value="en">English</option>
     </select>
     <button id="tts-toggle" class="on" title="語音開關">🔊</button>
+    <select id="scene-selector" title="切換場景">
+      <option value="home">🏠 居家</option>
+      <option value="sakura">🌸 櫻花</option>
+      <option value="fantasy">✨ 奇幻</option>
+      <option value="night">🌃 夜景</option>
+    </select>
     <span id="model-display" style="font-size:11px;color:var(--text-muted);padding:2px 8px;background:var(--accent-muted);border-radius:10px;cursor:default;" title="在設定中切換模型">📡</span>
   </div>
   <div id="loading"><div class="spinner"></div><span>Loading model...</span></div>
@@ -709,6 +715,62 @@ let currentVrm = null;
 let animController = null;
 let nextBlinkTime = 0, blinkEndTime = 0;
 
+// ── Scene Themes ────────────────────────────────────────────────────
+const SCENE_THEMES = {
+  home: {
+    name: '🏠 居家',
+    gradient: 'radial-gradient(ellipse at 50% 30%, #3a2a20 0%, #2a1f18 40%, #1a1510 100%)',
+    ambient: 0xffe8d0, ambientIntensity: 0.8,
+    dir: 0xffd4a0, dirIntensity: 0.7, dirPos: [1, 2, 1],
+    toneMappingExposure: 1.0,
+  },
+  sakura: {
+    name: '🌸 櫻花',
+    gradient: 'radial-gradient(ellipse at 50% 20%, #3a2535 0%, #2a1a25 40%, #1a1018 100%)',
+    ambient: 0xffd0e0, ambientIntensity: 0.9,
+    dir: 0xffe0f0, dirIntensity: 0.8, dirPos: [0.5, 3, 1],
+    toneMappingExposure: 1.1,
+  },
+  fantasy: {
+    name: '✨ 奇幻',
+    gradient: 'radial-gradient(ellipse at 50% 40%, #1a1a38 0%, #12122a 40%, #0a0a1a 100%)',
+    ambient: 0xc0c0ff, ambientIntensity: 0.6,
+    dir: 0xa0a0ff, dirIntensity: 0.9, dirPos: [0, 3, 0.5],
+    toneMappingExposure: 0.9,
+  },
+  night: {
+    name: '🌃 夜景',
+    gradient: 'radial-gradient(ellipse at 50% 60%, #1a1e2a 0%, #0f1218 50%, #080a10 100%)',
+    ambient: 0x8090b0, ambientIntensity: 0.5,
+    dir: 0xffa040, dirIntensity: 0.6, dirPos: [-1, 1.5, 2],
+    toneMappingExposure: 0.8,
+  },
+};
+var currentSceneTheme = 'home';
+var ambientLight, dirLight;
+
+function applySceneTheme(themeName) {
+  const theme = SCENE_THEMES[themeName];
+  if (!theme) return;
+  currentSceneTheme = themeName;
+  // CSS gradient background behind canvas
+  container.style.background = theme.gradient;
+  // Three.js lighting
+  if (ambientLight) {
+    ambientLight.color.setHex(theme.ambient);
+    ambientLight.intensity = theme.ambientIntensity;
+  }
+  if (dirLight) {
+    dirLight.color.setHex(theme.dir);
+    dirLight.intensity = theme.dirIntensity;
+    dirLight.position.set(...theme.dirPos);
+  }
+  if (renderer) {
+    renderer.toneMappingExposure = theme.toneMappingExposure;
+  }
+  localStorage.setItem('ai-wife-scene', themeName);
+}
+
 function initScene() {
   clock = new THREE.Clock();
   scene = new THREE.Scene();
@@ -722,12 +784,18 @@ function initScene() {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
   container.insertBefore(renderer.domElement, container.firstChild);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+  scene.add(ambientLight);
+  dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
   dirLight.position.set(1, 2, 1);
   scene.add(dirLight);
+
+  // Apply saved or default scene theme
+  const savedScene = localStorage.getItem('ai-wife-scene') || 'home';
+  applySceneTheme(savedScene);
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 1.0, 0);
@@ -872,6 +940,14 @@ function setEmotion(emotion) {
 initScene();
 animate();
 loadModel('./static/models/character.vrm');
+
+// Scene selector
+const sceneSelector = document.getElementById('scene-selector');
+const savedSceneVal = localStorage.getItem('ai-wife-scene') || 'home';
+sceneSelector.value = savedSceneVal;
+sceneSelector.addEventListener('change', () => {
+  applySceneTheme(sceneSelector.value);
+});
 
 // ── Core Utils ───────────────────────────────────────────────────────
 function uuidv4() {
