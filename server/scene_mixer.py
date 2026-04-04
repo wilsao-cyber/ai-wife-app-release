@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 SAMPLE_RATE = 24000  # Match Voicebox output
 
 
-def _load_wav_as_float(path: str) -> Optional[np.ndarray]:
+def _load_wav_as_float(path: str, normalize: bool = False) -> Optional[np.ndarray]:
     """Load a WAV/MP3 file and return float32 mono samples at SAMPLE_RATE."""
     try:
         import soundfile as sf
@@ -41,6 +41,13 @@ def _load_wav_as_float(path: str) -> Optional[np.ndarray]:
             from scipy.signal import resample
             new_len = int(len(audio) * SAMPLE_RATE / sr)
             audio = resample(audio, new_len).astype(np.float32)
+        # Normalize to loud level — SFX files are often very quiet (ASMR)
+        if normalize:
+            rms = np.sqrt(np.mean(audio ** 2))
+            if rms > 0.001:
+                target_rms = 0.25  # loud normalize ~-12dBFS
+                audio = audio * (target_rms / rms)
+                audio = np.clip(audio, -0.95, 0.95)
         return audio
     except Exception as e:
         logger.warning(f"Failed to load audio {path}: {e}")
@@ -153,7 +160,7 @@ async def mix_scene(
                 logger.warning(f"SFX not found: tag={tag} query={query}")
                 continue
 
-            sfx_audio = _load_wav_as_float(results[0].path)
+            sfx_audio = _load_wav_as_float(results[0].path, normalize=True)
             if sfx_audio is None:
                 continue
 
