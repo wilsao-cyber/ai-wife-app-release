@@ -182,7 +182,7 @@ class TTSEngine:
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": text},
                 ],
-                max_tokens=500,
+                max_tokens=2048,
                 temperature=0.3,
                 think=False,
                 use_fallback=use_fb,
