@@ -163,7 +163,8 @@ class TTSEngine:
     )
 
     async def _translate_to_ja(self, text: str, language: str, emotion: str = "neutral") -> str:
-        """Translate text to Japanese for voice synthesis using the active LLM client."""
+        """Translate text to Japanese for voice synthesis.
+        Always uses primary provider (not fallback) since translation won't trigger content filters."""
         if language == "ja":
             return text
         try:
@@ -173,6 +174,8 @@ class TTSEngine:
 
             prompt = self._TRANSLATE_HORNY if emotion == "horny" else self._TRANSLATE_BASE
 
+            # Force use_fallback=False — translation is safe content,
+            # and primary provider (DashScope) follows instructions better
             result = await self._llm_client.chat(
                 messages=[
                     {"role": "system", "content": prompt},
@@ -181,6 +184,7 @@ class TTSEngine:
                 max_tokens=500,
                 temperature=0.3,
                 think=False,
+                use_fallback=False,
             )
             ja_text = result.strip() if isinstance(result, str) else str(result).strip()
             return ja_text
