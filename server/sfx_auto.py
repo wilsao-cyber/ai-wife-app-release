@@ -70,10 +70,7 @@ def detect_sfx(text: str, emotion: str = "neutral") -> list[SfxLayer]:
     if mood_tag:
         layers.append(SfxLayer(tag=mood_tag, volume=mood_vol, layer_type="mood"))
 
-    # 3. Detect event sounds (not used in batch auto-mix, but available for scene_mixer)
-    for keywords, tag, volume in EVENT_KEYWORDS:
-        if any(kw in text for kw in keywords):
-            layers.append(SfxLayer(tag=tag, volume=volume, layer_type="event"))
+    # Event sounds only used by scene_mixer, not auto-mix in batch TTS
 
     if layers:
         logger.info(f"SFX auto-detect: {', '.join(f'{l.tag}({l.layer_type}@{l.volume})' for l in layers)}")
