@@ -148,13 +148,20 @@ class LLMClient:
                 json=payload,
             ) as response:
                 response.raise_for_status()
+                yielded = 0
                 async for line in response.aiter_lines():
                     if not line.strip():
                         continue
                     chunk = json.loads(line)
-                    content = chunk.get("message", {}).get("content", "")
+                    msg = chunk.get("message", {})
+                    content = msg.get("content", "")
+                    # Ollama Qwen3.5: thinking phase has content="" + thinking="..."
+                    # Content phase has content="..." + thinking=""
                     if content:
+                        yielded += len(content)
                         yield content
+                if yielded == 0:
+                    logger.warning(f"Ollama stream produced 0 content chars (model may be thinking-only)")
         except Exception as e:
             logger.error(f"Ollama stream failed: {e}")
             raise
