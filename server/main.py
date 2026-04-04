@@ -433,44 +433,53 @@ async def api_tts(data: dict):
     mix_sfx = data.get("mix_sfx", False)
     audio_path, _, ja_text = await tts_engine.synthesize(text, language, emotion)
 
-    # In batch mode, auto-mix SFX based on emotion
-    if mix_sfx and emotion in ("horny",):
+    # In batch mode, auto-detect and mix SFX based on text content + emotion
+    if mix_sfx:
         try:
+            from sfx_auto import detect_sfx
             from sfx_catalog import sfx_catalog
-            from scene_mixer import _load_wav_as_float, _mix_into, _fade_in, _fade_out, SAMPLE_RATE
+            from scene_mixer import _load_wav_as_float, _fade_in, _fade_out, SAMPLE_RATE
             import numpy as np
             import wave
             from pathlib import Path
 
-            # Map emotion to SFX query
-            emotion_sfx = {
-                "horny": ("エッチな生活音", 0.15),
-            }
-            query, vol = emotion_sfx.get(emotion, (None, 0))
-            if query:
-                results = sfx_catalog.search(query=query, limit=1)
-                if results:
-                    speech = _load_wav_as_float(f"./output/audio/{audio_path}")
-                    sfx = _load_wav_as_float(results[0].path)
-                    if speech is not None and sfx is not None:
-                        # Loop SFX to match speech length
-                        if len(sfx) > 0:
+            layers = detect_sfx(text, emotion)
+            if layers:
+                speech = _load_wav_as_float(f"./output/audio/{audio_path}")
+                if speech is not None:
+                    mixed = speech.copy()
+                    for layer in layers:
+                        results = sfx_catalog.search(tag=layer.tag, limit=1)
+                        if not results:
+                            continue
+                        sfx = _load_wav_as_float(results[0].path, normalize=True)
+                        if sfx is None or len(sfx) == 0:
+                            continue
+                        if layer.layer_type in ("ambient", "mood"):
+                            # Loop to cover entire speech
                             repeats = (len(speech) // len(sfx)) + 1
                             sfx_looped = np.tile(sfx, repeats)[:len(speech)]
-                            sfx_looped = _fade_in(sfx_looped, 1.0)
-                            sfx_looped = _fade_out(sfx_looped, 0.5)
-                            mixed = speech + sfx_looped * vol
-                            peak = np.max(np.abs(mixed))
-                            if peak > 0.95:
-                                mixed = mixed * (0.95 / peak)
-                            out_path = Path(f"./output/audio/{audio_path}")
-                            out_int16 = np.clip(mixed * 32768, -32768, 32767).astype(np.int16)
-                            with wave.open(str(out_path), 'wb') as wf:
-                                wf.setnchannels(1)
-                                wf.setsampwidth(2)
-                                wf.setframerate(SAMPLE_RATE)
-                                wf.writeframes(out_int16.tobytes())
-                            logger.info(f"SFX mixed into TTS: {query} @ {vol}")
+                            sfx_looped = _fade_in(sfx_looped, 1.5)
+                            sfx_looped = _fade_out(sfx_looped, 1.0)
+                            mixed = mixed + sfx_looped * layer.volume
+                        elif layer.layer_type == "event":
+                            # Place once at 30% position (rough estimate of action point)
+                            pos = int(len(speech) * 0.3)
+                            end = min(pos + len(sfx), len(mixed))
+                            if end > len(mixed):
+                                mixed = np.pad(mixed, (0, end - len(mixed)))
+                            mixed[pos:pos + len(sfx[:end - pos])] += sfx[:end - pos] * layer.volume
+
+                    peak = np.max(np.abs(mixed))
+                    if peak > 0.95:
+                        mixed = mixed * (0.95 / peak)
+                    out_path = Path(f"./output/audio/{audio_path}")
+                    out_int16 = np.clip(mixed * 32768, -32768, 32767).astype(np.int16)
+                    with wave.open(str(out_path), 'wb') as wf:
+                        wf.setnchannels(1)
+                        wf.setsampwidth(2)
+                        wf.setframerate(SAMPLE_RATE)
+                        wf.writeframes(out_int16.tobytes())
         except Exception as e:
             logger.warning(f"SFX auto-mix failed: {e}")
 
@@ -537,6 +546,90 @@ async def voice_switch(data: dict):
     else:
         config.tts.voicebox_horny_profile_id = profile_id
     return {"ok": True, "mode": mode, "profile_id": profile_id}
+
+
+@app.post("/api/voice/create")
+async def voice_create(data: dict):
+    """Create a new voice profile on Voicebox."""
+    import httpx
+    name = data.get("name", "").strip()
+    description = data.get("description", "").strip()
+    language = data.get("language", "ja")
+    if not name:
+        return {"error": "Name is required"}
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{config.tts.voicebox_api_url}/profiles",
+                json={"name": name, "description": description, "language": language},
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/voice/upload-sample")
+async def voice_upload_sample(
+    profile_id: str = "",
+    reference_text: str = "",
+    file: UploadFile = File(...),
+):
+    """Upload audio sample to a Voicebox profile."""
+    import httpx
+    import tempfile
+    from pathlib import Path
+
+    if not profile_id or not reference_text:
+        return {"error": "profile_id and reference_text required"}
+
+    content = await file.read()
+    ext = Path(file.filename or "audio.wav").suffix or ".wav"
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            with open(tmp_path, "rb") as f:
+                resp = await client.post(
+                    f"{config.tts.voicebox_api_url}/profiles/{profile_id}/samples",
+                    files={"file": (file.filename, f, "audio/wav")},
+                    data={"reference_text": reference_text},
+                )
+                resp.raise_for_status()
+                return resp.json()
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+@app.delete("/api/voice/profile/{profile_id}")
+async def voice_delete_profile(profile_id: str):
+    """Delete a voice profile from Voicebox."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.delete(f"{config.tts.voicebox_api_url}/profiles/{profile_id}")
+            resp.raise_for_status()
+            return {"ok": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/voice/samples/{profile_id}")
+async def voice_samples(profile_id: str):
+    """List samples for a voice profile."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{config.tts.voicebox_api_url}/profiles/{profile_id}/samples")
+            resp.raise_for_status()
+            return {"samples": resp.json()}
+    except Exception as e:
+        return {"samples": [], "error": str(e)}
 
 
 @app.post("/api/voice/test")

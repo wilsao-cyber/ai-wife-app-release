@@ -38,7 +38,7 @@ class SceneSkill(BaseSkill):
                         "handjob_slow, handjob_fast, handjob_irregular, handjob_buildup, "
                         "lotion_apply, lotion_bottle, piston_slow, piston_fast, piston_wet, "
                         "ejaculation, ejaculation_heavy, squirt, bedsheet, clothes_rustle, "
-                        "rain, rain_light, kiss, shower, ear_cleaning"
+                        "rain, rain_light, shower, ear_cleaning"
                     ),
                     "parameters": {
                         "type": "object",
@@ -87,7 +87,7 @@ class SceneSkill(BaseSkill):
                 tts_engine=_tts_engine,
                 sfx_catalog=sfx_catalog,
                 language="zh-TW",
-                emotion=kwargs.get("emotion", "horny"),
+                emotion=kwargs.get("emotion", "neutral"),
             )
             if not path:
                 return {"error": "Scene mixing failed"}

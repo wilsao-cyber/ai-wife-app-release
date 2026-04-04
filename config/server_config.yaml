@@ -18,8 +18,8 @@ llm:
 tts:
   provider: "voicebox"
   voicebox_api_url: "http://localhost:17493"
-  voicebox_profile_id: ""           # set via UI after training
-  voicebox_horny_profile_id: ""   # set via UI after training
+  voicebox_profile_id: ""           # ayachi (RJ01175599)
+  voicebox_horny_profile_id: ""   # ayachi_horny (RJ01175599)
   voicebox_model_size: "1.7B"      # "1.7B" or "0.6B" — 0.6B is ~2x faster but lower quality
   voicebox_concurrency: 1           # sequential — Voicebox serializes GPU internally
   audio_fx_enabled: true             # emotion-based audio post-processing

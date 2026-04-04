@@ -296,7 +296,7 @@ class AgentOrchestrator:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": action},
         ]
-        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=512)
+        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=2048)
 
         if isinstance(result, dict) and result.get("tool_calls"):
             results = []
@@ -400,7 +400,7 @@ class AgentOrchestrator:
         """Non-streaming assist — single LLM call with tools, think=False."""
         messages = await self._build_assist_messages(message, language, client_id)
         tools = self.skills.get_tool_definitions()
-        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=512)
+        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=2048)
 
         if isinstance(result, dict) and result.get("tool_calls"):
             self.pending_plans[client_id] = {
@@ -438,7 +438,7 @@ class AgentOrchestrator:
         messages = await self._build_assist_messages(message, language, client_id)
         tools = self.skills.get_tool_definitions()
 
-        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=512, use_fallback=use_fallback)
+        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=2048, use_fallback=use_fallback)
 
         if isinstance(result, dict) and result.get("tool_calls"):
             plan_text = result.get("content", "")
@@ -585,6 +585,11 @@ class AgentOrchestrator:
             "scene",
             "親密場景",
             "互動",
+            "模擬",
+            "重現",
+            "情境",
+            "roleplay",
+            "角色扮演",
             "打手槍",
             "幫我弄",
             "口交",
@@ -620,13 +625,16 @@ class AgentOrchestrator:
         for tc in tool_calls:
             func = tc["function"]
             name = func["name"]
-            args = json.loads(func["arguments"])
-            lines.append(f"- {name}: {json.dumps(args, ensure_ascii=False)}")
+            try:
+                args = json.loads(func["arguments"])
+                lines.append(f"- {name}: {json.dumps(args, ensure_ascii=False)}")
+            except (json.JSONDecodeError, TypeError):
+                lines.append(f"- {name}: {func.get('arguments', '')[:200]}...")
         return "\n".join(lines)
 
     def _extract_emotion(self, text: str) -> tuple[str, str]:
         match = re.search(
-            r"\[emotion:(happy|sad|angry|surprised|relaxed|neutral)\]\s*$", text
+            r"\[emotion:(happy|sad|angry|surprised|relaxed|neutral|horny)\]\s*$", text
         )
         if match:
             return text[: match.start()].rstrip(), match.group(1)
