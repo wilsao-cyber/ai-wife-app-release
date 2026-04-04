@@ -240,6 +240,14 @@ class TTSEngine:
         if not clean_text:
             return "", [], "", ""
 
+        # Strip JSON/code blocks that LLM sometimes outputs in chat mode
+        clean_text = _re.sub(r'```json\s*\{[\s\S]*?\}\s*```', '', clean_text)
+        clean_text = _re.sub(r'```[\s\S]*?```', '', clean_text)
+        clean_text = _re.sub(r'\{["\s]*tool[\s\S]*?\}', '', clean_text)
+        clean_text = clean_text.strip()
+        if not clean_text:
+            return "", [], "", ""
+
         # Translate to Japanese for voice synthesis
         ja_text = await self._translate_to_ja(clean_text, language, emotion)
         # Clean special characters that cause TTS glitch
