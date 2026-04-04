@@ -151,7 +151,7 @@ async def mix_scene(
                         continue
                     timeline = _mix_into(timeline, speech_audio, cursor)
                     cursor += len(speech_audio)
-                    cursor += int(0.15 * SAMPLE_RATE)
+                    cursor += int(0.5 * SAMPLE_RATE)  # 500ms gap between sentences
 
             # Layer ALL active SFX under this speech segment
             _layer_all_sfx(speech_start, cursor)

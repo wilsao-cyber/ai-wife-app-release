@@ -958,7 +958,9 @@ async def list_provider_models(provider: str = "", base_url: str = "", api_key: 
                 {"id": "qwen3-4b", "name": "Qwen3 4B", "context": 131072, "free": False},
                 {"id": "qwen3-1.7b", "name": "Qwen3 1.7B", "context": 32768, "free": False},
                 {"id": "qwen3-0.6b", "name": "Qwen3 0.6B", "context": 32768, "free": False},
-                # Qwen3.5 / Qwen3.6
+                # Qwen3.6
+                {"id": "qwen3.6-plus", "name": "Qwen3.6 Plus", "context": 131072, "free": False},
+                # Qwen3.5
                 {"id": "qwen3.5-7b", "name": "Qwen3.5 7B", "context": 131072, "free": False},
                 {"id": "qwen3.5-14b", "name": "Qwen3.5 14B", "context": 131072, "free": False},
                 {"id": "qwen3.5-32b", "name": "Qwen3.5 32B", "context": 131072, "free": False},

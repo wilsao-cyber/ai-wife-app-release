@@ -78,13 +78,13 @@ class TTSEngine:
             self._model = None
 
     EMOTION_INSTRUCT_MAP = {
-        "happy": "甘えた可愛い女の子の声で、愛情と温もりを込めて、少し艶っぽく、ゆっくり話してください。嬉しそうに、明るく弾んだ声で",
-        "sad": "甘えた可愛い女の子の声で、愛情と温もりを込めて、ゆっくり話してください。少し寂しそうに、甘えるような声で",
-        "angry": "甘えた可愛い女の子の声で、愛情と温もりを込めて、ゆっくり話してください。少し拗ねた、可愛く怒った声で",
-        "surprised": "甘えた可愛い女の子の声で、愛情と温もりを込めて、少し艶っぽく、ゆっくり話してください。驚いた、でも嬉しそうな声で",
-        "relaxed": "甘えた可愛い女の子の声で、愛情と温もりを込めて、少し艶っぽく、ゆっくり話してください。穏やかで、囁くような甘い声で",
-        "neutral": "甘えた可愛い女の子の声で、愛情と温もりを込めて、少し艶っぽく、ゆっくり話してください",
-        "horny": "喘ぎ声で、エッチな感じで、吐息を漏らしながら、感じている声で、恥ずかしそうに甘く囁いてください",
+        "happy": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください。嬉しくて、思わず笑顔になるような弾んだ声で",
+        "sad": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください。少し寂しそうに、甘えるような声で",
+        "angry": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください。少し拗ねた、可愛く怒った声で",
+        "surprised": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください。驚いた、でも嬉しそうな声で",
+        "relaxed": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください。穏やかで、囁くような甘い声で",
+        "neutral": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください",
+        "horny": "恋人に甘く囁くように、吐息を漏らしながら、恥ずかしそうだけど感じている声で、とてもゆっくり囁いてください",
     }
 
     async def synthesize(
@@ -174,17 +174,18 @@ class TTSEngine:
 
             prompt = self._TRANSLATE_HORNY if emotion == "horny" else self._TRANSLATE_BASE
 
-            # Force use_fallback=False — translation is safe content,
-            # and primary provider (DashScope) follows instructions better
+            # If primary is Ollama (local), prefer fallback (cloud) for better translation
+            # If primary is cloud, use primary directly
+            use_fb = self._llm_client._is_ollama and self._llm_client.has_fallback
             result = await self._llm_client.chat(
                 messages=[
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": text},
                 ],
-                max_tokens=500,
+                max_tokens=2048,
                 temperature=0.3,
                 think=False,
-                use_fallback=False,
+                use_fallback=use_fb,
             )
             ja_text = result.strip() if isinstance(result, str) else str(result).strip()
             return ja_text
@@ -217,8 +218,8 @@ class TTSEngine:
             # Walk backwards to find last audible sample
             while end > 0 and abs(samples[end - 1]) < threshold:
                 end -= 1
-            # Keep a tiny tail (~50ms at 22050Hz ≈ 1100 samples)
-            end = min(len(samples), end + 1100)
+            # Keep a natural tail (~200ms at 22050Hz ≈ 4400 samples)
+            end = min(len(samples), end + 4400)
             return struct.pack(f"<{end}h", *samples[:end])
 
         with wave.open(str(output_path), "wb") as out:
@@ -290,13 +291,13 @@ class TTSEngine:
                     fine.append(merged_part)
             else:
                 fine.append(seg)
-        # Merge very short fragments (< 6 chars) into previous
+        # Merge short fragments (< 10 chars) into previous — prevents voice instability on tiny segments
         sentences = []
         for s in fine:
             s = s.strip()
             if not s:
                 continue
-            if len(s) < 6 and sentences:
+            if len(s) < 10 and sentences:
                 sentences[-1] += s
             else:
                 sentences.append(s)
