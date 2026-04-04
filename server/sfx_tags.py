@@ -17,7 +17,7 @@ TAG_PATTERNS = {
     "piston_fast": ["ピストン.*激し", "ピストン.*速", "乾いたピストン音4", "濡れたピストン音2", "濡れたピストン音4"],
     "piston_wet": ["濡れたピストン", "弾けるような音", "水っぽい"],
     "piston_dry": ["乾いたピストン"],
-    "ejaculation": ["射精音"],
+    "ejaculation": ["射精音[0-9]"],
     "ejaculation_heavy": ["射精.*大量", "射精.*ドロドロ", "射精.*濃厚"],
     "squirt": ["潮吹き", "潮を吹く"],
     "onahole": ["オナホール"],
@@ -58,9 +58,8 @@ TAG_PATTERNS = {
     # === Actions (RJ276666) ===
     "door": ["ドア", "扉"],
     "footstep": ["足音", "歩"],
-    "kiss": ["キス", "ちゅ"],
     "slap": ["平手", "ビンタ", "叩"],
-    # NOTE: heartbeat, breathing not in current library
+    # NOTE: heartbeat, breathing, kiss not in current library
 }
 
 # Semantic descriptions for LLM tool description (condensed)
@@ -94,5 +93,4 @@ TAG_DESCRIPTIONS = {
     "ear_cleaning": "耳かき (ear cleaning ASMR)",
     "door": "ドア (door open/close)",
     "footstep": "足音 (footsteps)",
-    "kiss": "キス (kissing)",
 }

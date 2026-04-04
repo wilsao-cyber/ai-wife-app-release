@@ -14,11 +14,9 @@ Script format:
 The mixer builds a numpy timeline and layers speech + SFX onto it.
 """
 
-import asyncio
 import logging
 import uuid
 import wave
-import struct
 import numpy as np
 from pathlib import Path
 from typing import Optional
@@ -96,8 +94,20 @@ async def mix_scene(
 
     timeline = np.zeros(SAMPLE_RATE * 5, dtype=np.float32)  # start with 5s, will grow
     cursor = 0  # current position in samples
-    active_sfx = None  # currently looping SFX
+    active_sfx = None  # currently looping SFX audio
     active_sfx_volume = 0.5
+
+    def _layer_active_sfx(from_pos: int, to_pos: int):
+        """Loop active SFX between two positions on the timeline."""
+        nonlocal timeline
+        if active_sfx is None or len(active_sfx) == 0:
+            return
+        length = to_pos - from_pos
+        if length <= 0:
+            return
+        repeats = (length // len(active_sfx)) + 1
+        looped = np.tile(active_sfx, repeats)[:length]
+        timeline = _mix_into(timeline, looped, from_pos, active_sfx_volume)
 
     for step in script:
         step_type = step.get("type", "")
@@ -107,39 +117,30 @@ async def mix_scene(
             if not text:
                 continue
 
-            # Generate TTS for this line
+            line_emotion = step.get("emotion", emotion)
             ja_text, sentences, instruct, profile_id = await tts_engine._prepare_tts(
-                text, language, emotion
+                text, language, line_emotion
             )
             if not sentences:
                 continue
 
+            speech_start = cursor
             async with httpx.AsyncClient(timeout=120.0) as client:
                 for sent in sentences:
                     path = await tts_engine._voicebox_generate_one(
-                        client, sent, profile_id, instruct, emotion=emotion
+                        client, sent, profile_id, instruct, emotion=line_emotion
                     )
                     if not path:
                         continue
                     speech_audio = _load_wav_as_float(str(path))
                     if speech_audio is None:
                         continue
-                    # Mix speech into timeline
                     timeline = _mix_into(timeline, speech_audio, cursor)
                     cursor += len(speech_audio)
-                    # Small gap between sentences
                     cursor += int(0.15 * SAMPLE_RATE)
 
-            # If SFX is active, layer it under the speech we just added
-            if active_sfx is not None:
-                sfx_samples = active_sfx
-                sfx_start = cursor - len(speech_audio) - int(0.15 * SAMPLE_RATE) if speech_audio is not None else cursor
-                # Loop SFX to cover speech duration
-                speech_len = cursor - sfx_start
-                if speech_len > 0 and len(sfx_samples) > 0:
-                    repeats = (speech_len // len(sfx_samples)) + 1
-                    looped = np.tile(sfx_samples, repeats)[:speech_len]
-                    timeline = _mix_into(timeline, looped, sfx_start, active_sfx_volume)
+            # Layer active SFX under this speech segment
+            _layer_active_sfx(speech_start, cursor)
 
         elif step_type == "sfx":
             tag = step.get("tag", "")
@@ -149,12 +150,14 @@ async def mix_scene(
 
             results = sfx_catalog.search(tag=tag, query=query, limit=1)
             if not results:
-                logger.warning(f"SFX not found: {query}")
+                logger.warning(f"SFX not found: tag={tag} query={query}")
                 continue
 
             sfx_audio = _load_wav_as_float(results[0].path)
             if sfx_audio is None:
                 continue
+
+            logger.info(f"SFX loaded: {results[0].filename[:40]} ({len(sfx_audio)/SAMPLE_RATE:.1f}s) vol={volume}")
 
             if fade_in_s > 0:
                 sfx_audio = _fade_in(sfx_audio, fade_in_s)
@@ -162,28 +165,21 @@ async def mix_scene(
             active_sfx = sfx_audio
             active_sfx_volume = volume
 
-            # Also place this SFX at current cursor position
-            timeline = _mix_into(timeline, sfx_audio, cursor, volume)
-
         elif step_type == "pause":
             duration = step.get("duration", 5)
             pause_samples = int(duration * SAMPLE_RATE)
 
-            # If SFX is active, loop it during the pause
-            if active_sfx is not None and len(active_sfx) > 0:
-                repeats = (pause_samples // len(active_sfx)) + 1
-                looped = np.tile(active_sfx, repeats)[:pause_samples]
-                timeline = _mix_into(timeline, looped, cursor, active_sfx_volume)
-
+            # Layer active SFX during pause
+            _layer_active_sfx(cursor, cursor + pause_samples)
             cursor += pause_samples
 
         elif step_type == "sfx_stop":
             if active_sfx is not None:
-                # Fade out over 0.5s at current position
-                fade_len = min(int(0.5 * SAMPLE_RATE), len(active_sfx))
-                fade = np.linspace(active_sfx_volume, 0, fade_len, dtype=np.float32)
-                if cursor + fade_len <= len(timeline):
-                    timeline[cursor:cursor + fade_len] *= np.linspace(1, 0.5, fade_len, dtype=np.float32)
+                # Fade out at current position
+                fade_len = min(int(0.5 * SAMPLE_RATE), cursor)
+                if cursor >= fade_len:
+                    fade = np.linspace(1, 0, fade_len, dtype=np.float32)
+                    timeline[cursor - fade_len:cursor] *= fade
                 active_sfx = None
                 active_sfx_volume = 0.5
 
