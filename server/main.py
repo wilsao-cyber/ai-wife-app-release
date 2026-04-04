@@ -434,43 +434,47 @@ async def api_tts(data: dict):
     audio_path, _, ja_text = await tts_engine.synthesize(text, language, emotion)
 
     # In batch mode, auto-mix SFX based on emotion
-    if mix_sfx and emotion in ("horny",):
+    if mix_sfx:
         try:
             from sfx_catalog import sfx_catalog
-            from scene_mixer import _load_wav_as_float, _mix_into, _fade_in, _fade_out, SAMPLE_RATE
+            from scene_mixer import _load_wav_as_float, _fade_in, _fade_out, SAMPLE_RATE
             import numpy as np
             import wave
             from pathlib import Path
 
-            # Map emotion to SFX query
-            emotion_sfx = {
-                "horny": ("エッチな生活音", 0.15),
+            # Map emotion to SFX tag + volume
+            emotion_sfx_map = {
+                "horny":     ("handjob_slow", 0.4),
+                "relaxed":   ("rain_light", 0.35),
+                "happy":     ("rain_light", 0.2),
+                "sad":       ("rain", 0.3),
+                "surprised": ("rain_light", 0.2),
+                "neutral":   ("rain_light", 0.15),
+                "angry":     (None, 0),
             }
-            query, vol = emotion_sfx.get(emotion, (None, 0))
-            if query:
-                results = sfx_catalog.search(query=query, limit=1)
+            tag, vol = emotion_sfx_map.get(emotion, (None, 0))
+            if tag:
+                results = sfx_catalog.search(tag=tag, limit=1)
                 if results:
                     speech = _load_wav_as_float(f"./output/audio/{audio_path}")
-                    sfx = _load_wav_as_float(results[0].path)
-                    if speech is not None and sfx is not None:
-                        # Loop SFX to match speech length
-                        if len(sfx) > 0:
-                            repeats = (len(speech) // len(sfx)) + 1
-                            sfx_looped = np.tile(sfx, repeats)[:len(speech)]
-                            sfx_looped = _fade_in(sfx_looped, 1.0)
-                            sfx_looped = _fade_out(sfx_looped, 0.5)
-                            mixed = speech + sfx_looped * vol
-                            peak = np.max(np.abs(mixed))
-                            if peak > 0.95:
-                                mixed = mixed * (0.95 / peak)
-                            out_path = Path(f"./output/audio/{audio_path}")
-                            out_int16 = np.clip(mixed * 32768, -32768, 32767).astype(np.int16)
-                            with wave.open(str(out_path), 'wb') as wf:
-                                wf.setnchannels(1)
-                                wf.setsampwidth(2)
-                                wf.setframerate(SAMPLE_RATE)
-                                wf.writeframes(out_int16.tobytes())
-                            logger.info(f"SFX mixed into TTS: {query} @ {vol}")
+                    sfx = _load_wav_as_float(results[0].path, normalize=True)
+                    if speech is not None and sfx is not None and len(sfx) > 0:
+                        repeats = (len(speech) // len(sfx)) + 1
+                        sfx_looped = np.tile(sfx, repeats)[:len(speech)]
+                        sfx_looped = _fade_in(sfx_looped, 1.0)
+                        sfx_looped = _fade_out(sfx_looped, 0.5)
+                        mixed = speech + sfx_looped * vol
+                        peak = np.max(np.abs(mixed))
+                        if peak > 0.95:
+                            mixed = mixed * (0.95 / peak)
+                        out_path = Path(f"./output/audio/{audio_path}")
+                        out_int16 = np.clip(mixed * 32768, -32768, 32767).astype(np.int16)
+                        with wave.open(str(out_path), 'wb') as wf:
+                            wf.setnchannels(1)
+                            wf.setsampwidth(2)
+                            wf.setframerate(SAMPLE_RATE)
+                            wf.writeframes(out_int16.tobytes())
+                        logger.info(f"SFX auto-mixed: {tag} ({results[0].filename[:30]}) vol={vol} emotion={emotion}")
         except Exception as e:
             logger.warning(f"SFX auto-mix failed: {e}")
 
