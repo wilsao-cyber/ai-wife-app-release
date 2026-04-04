@@ -4,9 +4,8 @@ Analyzes Chinese/Japanese text for environmental and event cues,
 returns layered SFX recommendations.
 """
 
-import re
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,6 @@ def detect_sfx(text: str, emotion: str = "neutral") -> list[SfxLayer]:
     Returns layers sorted by priority: ambient first, then mood, then events.
     """
     layers = []
-    text_lower = text.lower()
 
     # 1. Detect ambient sounds from text content
     for category, patterns in AMBIENT_KEYWORDS.items():
@@ -67,12 +65,10 @@ def detect_sfx(text: str, emotion: str = "neutral") -> list[SfxLayer]:
                 layers.append(SfxLayer(tag=tag, volume=volume, layer_type="ambient"))
                 break  # one per category
 
-    # 2. Detect mood-based ambient
+    # 2. Detect mood-based ambient (always add, independent of ambient layer)
     mood_tag, mood_vol = MOOD_MAP.get(emotion, (None, 0))
     if mood_tag:
-        # Don't add mood SFX if ambient already covers the scene
-        if not any(l.layer_type == "ambient" for l in layers):
-            layers.append(SfxLayer(tag=mood_tag, volume=mood_vol, layer_type="mood"))
+        layers.append(SfxLayer(tag=mood_tag, volume=mood_vol, layer_type="mood"))
 
     # 3. Detect event sounds (not used in batch auto-mix, but available for scene_mixer)
     for keywords, tag, volume in EVENT_KEYWORDS:
