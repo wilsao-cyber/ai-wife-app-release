@@ -112,6 +112,7 @@ async def mix_scene(
         length = to_pos - from_pos
         if length <= 0:
             return
+        logger.info(f"  Layering {len(active_layers)} SFX from {from_pos/SAMPLE_RATE:.1f}s to {to_pos/SAMPLE_RATE:.1f}s")
         for layer in active_layers:
             sfx = layer["audio"]
             vol = layer["volume"]
@@ -120,6 +121,7 @@ async def mix_scene(
             repeats = (length // len(sfx)) + 1
             looped = np.tile(sfx, repeats)[:length]
             timeline = _mix_into(timeline, looped, from_pos, vol)
+            logger.info(f"    → {layer['tag']} vol={vol} looped={len(looped)/SAMPLE_RATE:.1f}s")
 
     for step in script:
         step_type = step.get("type", "")
