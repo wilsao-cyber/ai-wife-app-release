@@ -296,7 +296,7 @@ class AgentOrchestrator:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": action},
         ]
-        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=512)
+        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=2048)
 
         if isinstance(result, dict) and result.get("tool_calls"):
             results = []
@@ -400,7 +400,7 @@ class AgentOrchestrator:
         """Non-streaming assist — single LLM call with tools, think=False."""
         messages = await self._build_assist_messages(message, language, client_id)
         tools = self.skills.get_tool_definitions()
-        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=512)
+        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=2048)
 
         if isinstance(result, dict) and result.get("tool_calls"):
             self.pending_plans[client_id] = {
@@ -438,7 +438,7 @@ class AgentOrchestrator:
         messages = await self._build_assist_messages(message, language, client_id)
         tools = self.skills.get_tool_definitions()
 
-        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=512, use_fallback=use_fallback)
+        result = await self.llm.chat(messages, tools=tools, think=False, max_tokens=2048, use_fallback=use_fallback)
 
         if isinstance(result, dict) and result.get("tool_calls"):
             plan_text = result.get("content", "")
