@@ -451,17 +451,31 @@ class AgentOrchestrator:
                 "language": language,
             }
 
+            parsed_calls = []
+            for tc in tool_calls:
+                try:
+                    args = json.loads(tc["function"]["arguments"])
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning(f"Malformed tool_call arguments, attempting repair: {tc['function']['arguments']!r}")
+                    # Try common repairs: trailing comma, unquoted values
+                    raw = tc["function"]["arguments"]
+                    try:
+                        # Strip trailing commas before } or ]
+                        import re as _re
+                        repaired = _re.sub(r',\s*([}\]])', r'\1', raw)
+                        args = json.loads(repaired)
+                    except (json.JSONDecodeError, TypeError):
+                        args = {"raw_arguments": raw}
+                parsed_calls.append({
+                    "name": tc["function"]["name"],
+                    "arguments": args,
+                })
+
             yield json.dumps(
                 {
                     "type": "plan",
                     "description": self._format_plan(plan_text, tool_calls),
-                    "tool_calls": [
-                        {
-                            "name": tc["function"]["name"],
-                            "arguments": json.loads(tc["function"]["arguments"]),
-                        }
-                        for tc in tool_calls
-                    ],
+                    "tool_calls": parsed_calls,
                     "awaiting_confirmation": True,
                 },
                 ensure_ascii=False,

@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import (
     FastAPI,
     WebSocket,
     WebSocketDisconnect,
     UploadFile,
     File,
+    Form,
     HTTPException,
 )
 from fastapi.middleware.cors import CORSMiddleware
@@ -431,7 +433,7 @@ async def api_tts(data: dict):
     language = data.get("language", config.languages.default)
     emotion = data.get("emotion", "neutral")
     mix_sfx = data.get("mix_sfx", False)
-    audio_path, _, ja_text = await tts_engine.synthesize(text, language, emotion)
+    audio_path, visemes, ja_text = await tts_engine.synthesize(text, language, emotion)
 
     # In batch mode, auto-detect and mix SFX based on text content + emotion
     if mix_sfx:
@@ -486,6 +488,7 @@ async def api_tts(data: dict):
     return {
         "audio_url": f"/audio/{audio_path}",
         "ja_text": ja_text,
+        "visemes": visemes or [],
     }
 
 
@@ -1265,6 +1268,134 @@ async def delete_vrm(filename: str):
         return {"success": True}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="VRM not found")
+
+
+# --- PMX to VRM Conversion ---
+
+@app.post("/api/vrm/convert-pmx")
+async def convert_pmx(file: UploadFile = File(...)):
+    """Convert a .pmx file to .vrm using Blender"""
+    if not file.filename.lower().endswith(".pmx"):
+        raise HTTPException(status_code=400, detail="Only .pmx files are supported")
+
+    import subprocess, tempfile
+
+    data = await file.read()
+    if len(data) > 200 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds 200MB limit")
+
+    # Save PMX to temp dir with its original name
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pmx_path = Path(tmpdir) / file.filename
+        pmx_path.write_bytes(data)
+
+        safe_name = "".join(c for c in Path(file.filename).stem if c.isalnum() or c in "_- ").strip()[:30] or "converted"
+        vrm_name = f"{safe_name}.vrm"
+        vrm_path = Path("output/vrm") / vrm_name
+
+        script = Path("../scripts/pmx_to_vrm.py").resolve()
+        if not script.exists():
+            script = Path("scripts/pmx_to_vrm.py").resolve()
+
+        env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "LD_LIBRARY_PATH")}
+        env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+
+        result = subprocess.run(
+            ["blender", "--background", "--python", str(script), "--", str(pmx_path), str(vrm_path.resolve())],
+            capture_output=True, text=True, timeout=300, env=env,
+        )
+
+        if not vrm_path.exists():
+            detail = result.stderr[-500:] if result.stderr else "Unknown error"
+            raise HTTPException(status_code=500, detail=f"Conversion failed: {detail}")
+
+        size = vrm_path.stat().st_size
+        return {"filename": vrm_name, "size": size, "url": f"/vrm/{vrm_name}"}
+
+
+# --- Animations ---
+
+ANIM_DIR = Path("static/animations")
+ANIM_REGISTRY = ANIM_DIR / "registry.json"
+
+
+def _read_anim_registry() -> list[dict]:
+    try:
+        return json.loads(ANIM_REGISTRY.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _write_anim_registry(entries: list[dict]):
+    ANIM_REGISTRY.write_text(
+        json.dumps(entries, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+@app.get("/api/animations/list")
+async def list_animations():
+    return {"animations": _read_anim_registry()}
+
+
+@app.post("/api/animations/upload")
+async def upload_animation(
+    file: UploadFile = File(...),
+    id: str = Form(...),
+    label: str = Form(""),
+    loop: bool = Form(False),
+    autoReturnTo: str = Form("idle"),
+    lookAtWeight: float = Form(0.6),
+    priority: int = Form(2),
+):
+    if not file.filename.lower().endswith(".fbx"):
+        raise HTTPException(status_code=400, detail="Only .fbx files are supported")
+    data = await file.read()
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds 20MB limit")
+
+    # Sanitize ID
+    safe_id = "".join(c for c in id if c.isalnum() or c in "_-").lower()
+    if not safe_id:
+        raise HTTPException(status_code=400, detail="Invalid animation ID")
+
+    filename = f"{safe_id}.fbx"
+    (ANIM_DIR / filename).write_bytes(data)
+
+    # Update registry
+    entries = _read_anim_registry()
+    entries = [e for e in entries if e["id"] != safe_id]
+    entries.append({
+        "id": safe_id,
+        "label": label or safe_id,
+        "file": filename,
+        "loop": loop,
+        "autoReturnTo": autoReturnTo,
+        "lookAtWeight": lookAtWeight,
+        "priority": priority,
+        "minIntervalMs": 300,
+    })
+    _write_anim_registry(entries)
+    return {"id": safe_id, "filename": filename}
+
+
+@app.delete("/api/animations/{anim_id}")
+async def delete_animation(anim_id: str):
+    entries = _read_anim_registry()
+    entry = next((e for e in entries if e["id"] == anim_id), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Animation not found")
+    # Don't allow deleting core animations
+    if anim_id in ("idle", "wave", "think"):
+        raise HTTPException(status_code=400, detail="Cannot delete core animation")
+    # Remove file
+    fbx_path = ANIM_DIR / entry["file"]
+    if fbx_path.exists():
+        fbx_path.unlink()
+    # Update registry
+    entries = [e for e in entries if e["id"] != anim_id]
+    _write_anim_registry(entries)
+    return {"success": True}
 
 
 # --- Vision ---

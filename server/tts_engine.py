@@ -353,11 +353,26 @@ class TTSEngine:
         if not source.exists():
             return None
 
-        # Copy to output dir with unique name
+        # Copy to output dir with unique name, prepend short silence
         import shutil
+        import wave
+        import struct
         out_name = f"{uuid.uuid4()}.wav"
         out_path = self.output_dir / out_name
-        shutil.copy2(str(source), str(out_path))
+
+        # Prepend ~80ms silence to prevent browser audio clipping on play start
+        try:
+            with wave.open(str(source), "rb") as src:
+                params = src.getparams()
+                raw = src.readframes(src.getnframes())
+            pad_samples = int(params.framerate * 0.08)  # 80ms
+            silence = struct.pack(f"<{pad_samples * params.nchannels}h",
+                                  *([0] * pad_samples * params.nchannels))
+            with wave.open(str(out_path), "wb") as out:
+                out.setparams(params)
+                out.writeframes(silence + raw)
+        except Exception:
+            shutil.copy2(str(source), str(out_path))
 
         # Apply audio post-processing based on emotion
         if getattr(self.config, "audio_fx_enabled", True):

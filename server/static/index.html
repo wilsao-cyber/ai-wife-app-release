@@ -238,6 +238,17 @@
     color: var(--text-primary); font-size: 13px; outline: none;
   }
   #input-bar input::placeholder { color: var(--text-muted); }
+  #mic-btn {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: none; border: 1px solid var(--glass-border); cursor: pointer;
+    font-size: 16px; display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; opacity: 0.6;
+  }
+  #mic-btn:hover { opacity: 1; }
+  #mic-btn.recording {
+    opacity: 1; background: rgba(255, 80, 80, 0.3); border-color: #ff5050;
+    animation: pulse 1s infinite;
+  }
   #input-bar button#send-btn {
     width: 36px; height: 36px; border-radius: 50%;
     background: var(--send-btn); border: none; cursor: pointer;
@@ -414,6 +425,7 @@
   <div id="input-bar">
     <button id="settings-btn" title="Settings">⚙️</button>
     <input type="text" id="chat-input" placeholder="輸入訊息..." autocomplete="off">
+    <button id="mic-btn" title="按住說話">🎙️</button>
     <button id="send-btn" title="Send">
       <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
@@ -513,6 +525,8 @@
       <button class="tab-btn" data-tab="tab-voice">語音</button>
       <button class="tab-btn" data-tab="tab-sfx">音效</button>
       <button class="tab-btn" data-tab="tab-render">渲染</button>
+      <button class="tab-btn" data-tab="tab-character">角色</button>
+      <button class="tab-btn" data-tab="tab-animations">動作</button>
     </div>
     <div class="tab-body active" id="tab-memory">
       <div id="memory-list">Loading...</div>
@@ -665,6 +679,43 @@
         <button id="save-preset-btn" style="flex:1;padding:8px;background:var(--accent-muted);color:var(--accent);border:1px solid var(--glass-border);border-radius:6px;cursor:pointer;font-size:12px;">存為新模式</button>
       </div>
     </div>
+    <div class="tab-body" id="tab-character">
+      <label style="color:var(--accent);font-size:13px;font-weight:bold;display:block;margin-bottom:10px;">👤 角色模型</label>
+      <div id="current-vrm-info" style="font-size:11px;color:var(--text-muted);margin-bottom:10px;padding:6px 10px;background:var(--accent-muted);border-radius:6px;">目前：character.vrm</div>
+      <div id="vrm-model-list" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;margin-bottom:12px;"></div>
+      <div style="border-top:1px solid var(--glass-border);padding-top:10px;">
+        <input id="vrm-upload-input" type="file" accept=".vrm" hidden>
+        <input id="pmx-upload-input" type="file" accept=".pmx" hidden>
+        <div style="display:flex;gap:6px;">
+          <button id="vrm-upload-btn" style="flex:1;padding:10px;background:var(--accent);color:var(--bg-primary);border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;">上傳 VRM</button>
+          <button id="pmx-upload-btn" style="flex:1;padding:10px;background:var(--accent-muted);color:var(--accent);border:1px solid var(--glass-border);border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;">匯入 PMX</button>
+        </div>
+        <div id="vrm-upload-status" style="color:var(--text-muted);font-size:11px;margin-top:4px;"></div>
+      </div>
+    </div>
+    <div class="tab-body" id="tab-animations">
+      <label style="color:var(--accent);font-size:13px;font-weight:bold;display:block;margin-bottom:10px;">💃 動作管理</label>
+      <div id="anim-list" style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;margin-bottom:12px;"></div>
+      <div style="border-top:1px solid var(--glass-border);padding-top:10px;">
+        <label style="color:var(--text-secondary);font-size:11px;display:block;margin-bottom:6px;">上傳新動作 (.fbx)</label>
+        <div style="display:flex;gap:6px;margin-bottom:6px;">
+          <input id="anim-id-input" type="text" placeholder="動作 ID（英文）" style="flex:1;padding:6px;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;font-size:11px;outline:none;box-sizing:border-box;">
+          <input id="anim-label-input" type="text" placeholder="顯示名稱" style="flex:1;padding:6px;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;font-size:11px;outline:none;box-sizing:border-box;">
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;">
+          <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px;"><input id="anim-loop-check" type="checkbox" style="accent-color:var(--accent);"> 循環</label>
+          <select id="anim-return-select" style="flex:1;padding:4px 6px;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;font-size:11px;outline:none;">
+            <option value="idle">結束後回到 idle</option>
+            <option value="">不自動回歸</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <input id="anim-upload-input" type="file" accept=".fbx" hidden>
+          <button id="anim-upload-btn" style="flex:1;padding:8px;background:var(--accent);color:var(--bg-primary);border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;">選擇 FBX 並上傳</button>
+        </div>
+        <div id="anim-upload-status" style="color:var(--text-muted);font-size:11px;margin-top:4px;"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -783,6 +834,9 @@ class AnimController {
       const fallback = entry?.autoReturnTo;
       if (fallback && fallback !== this.current) this.play(fallback);
       else if (this.defaultId) this.play(this.defaultId);
+      // Restore idle state when returning to an idle animation
+      isInIdleState = true;
+      idleVariantTimer = 0;
     });
   }
 
@@ -838,6 +892,147 @@ let scene, camera, renderer, controls, clock;
 let currentVrm = null;
 let animController = null;
 let nextBlinkTime = 0, blinkEndTime = 0;
+
+// ── Mouse/Touch Head Tracking ──────────────────────────────────────
+const DEFAULT_LOOK = new THREE.Vector3(0, 1.3, 10);
+let mouseTarget = new THREE.Vector3(0, 1.3, 10);
+let smoothLookAt = new THREE.Vector3(0, 1.3, 10);
+let currentLookAtWeight = 1.0;
+
+function screenToLookTarget(clientX, clientY) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const nx = ((clientX - rect.left) / rect.width) * 2 - 1;
+  const ny = -((clientY - rect.top) / rect.height) * 2 + 1;
+  return new THREE.Vector3(nx * 1.5, 1.3 + ny * 0.5, 2.0);
+}
+
+// ── Expression Blending ────────────────────────────────────────────
+let targetExpressions = {};
+let currentExpressions = {};
+const EXPRESSION_LERP_SPEED = 4.0;
+
+// ── Click/Touch Interaction ────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const _clickNDC = new THREE.Vector2();
+let lastPokeTime = 0;
+const POKE_COOLDOWN = 2000;
+let mouseDownPos = null;
+
+// ── Idle Variety ───────────────────────────────────────────────────
+const IDLE_VARIANTS = [
+  { id: 'idle', weight: 5 },
+];
+let idleVariantTimer = 0;
+let nextIdleSwitch = 15 + Math.random() * 15;
+let isInIdleState = true;
+
+function pickWeightedIdle() {
+  const available = IDLE_VARIANTS.filter(v => animController && animController.actions.has(v.id));
+  if (available.length === 0) return 'idle';
+  const total = available.reduce((s, v) => s + v.weight, 0);
+  let r = Math.random() * total;
+  for (const v of available) { r -= v.weight; if (r <= 0) return v.id; }
+  return available[0].id;
+}
+
+// ── Particle System ────────────────────────────────────────────────
+const particles = [];
+
+function createParticleTexture(type) {
+  const c = document.createElement('canvas');
+  c.width = 32; c.height = 32;
+  const ctx = c.getContext('2d');
+  if (type === 'heart') {
+    ctx.fillStyle = '#ff6b9d';
+    ctx.beginPath();
+    ctx.moveTo(16, 28);
+    ctx.bezierCurveTo(2, 18, 2, 6, 10, 6);
+    ctx.bezierCurveTo(14, 6, 16, 10, 16, 10);
+    ctx.bezierCurveTo(16, 10, 18, 6, 22, 6);
+    ctx.bezierCurveTo(30, 6, 30, 18, 16, 28);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = '#ffd700';
+    for (let i = 0; i < 5; i++) {
+      const a = (i * 72 - 90) * Math.PI / 180;
+      const a2 = ((i * 72 + 36) - 90) * Math.PI / 180;
+      ctx.lineTo(16 + Math.cos(a) * 14, 16 + Math.sin(a) * 14);
+      ctx.lineTo(16 + Math.cos(a2) * 6, 16 + Math.sin(a2) * 6);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  return new THREE.CanvasTexture(c);
+}
+
+const heartTex = createParticleTexture('heart');
+const sparkleTex = createParticleTexture('sparkle');
+
+function spawnParticles(position, type) {
+  const tex = type === 'heart' ? heartTex : sparkleTex;
+  for (let i = 0; i < 6; i++) {
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 1.0, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(0.08, 0.08, 0.08);
+    sprite.position.copy(position);
+    sprite.position.x += (Math.random() - 0.5) * 0.15;
+    sprite.position.y += (Math.random() - 0.5) * 0.1;
+    scene.add(sprite);
+    particles.push({ sprite, vel: new THREE.Vector3((Math.random() - 0.5) * 0.3, 0.5 + Math.random() * 0.5, (Math.random() - 0.5) * 0.2), life: 1.0 });
+  }
+}
+
+function updateParticles(delta) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= delta * 1.2;
+    p.sprite.position.addScaledVector(p.vel, delta);
+    p.sprite.material.opacity = Math.max(0, p.life);
+    p.sprite.scale.setScalar(0.08 * (0.5 + p.life * 0.5));
+    if (p.life <= 0) {
+      scene.remove(p.sprite);
+      p.sprite.material.dispose();
+      particles.splice(i, 1);
+    }
+  }
+}
+
+// ── Poke Reactions ─────────────────────────────────────────────────
+const pokeReactions = {
+  head:    { expression: 'happy',     anim: 'nod',   particles: 'heart' },
+  body:    { expression: 'happy',     anim: 'shy',   particles: 'heart' },
+  default: { expression: 'happy',     anim: 'wave',  particles: 'heart' }
+};
+
+function handlePoke(clientX, clientY) {
+  if (!currentVrm || Date.now() - lastPokeTime < POKE_COOLDOWN) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  _clickNDC.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  _clickNDC.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(_clickNDC, camera);
+  const hits = raycaster.intersectObject(currentVrm.scene, true);
+  if (hits.length === 0) return;
+
+  lastPokeTime = Date.now();
+  const hit = hits[0];
+  const box = new THREE.Box3().setFromObject(currentVrm.scene);
+  const h = box.max.y - box.min.y;
+  const relY = (hit.point.y - box.min.y) / h;
+
+  let zone = 'default';
+  if (relY > 0.85) zone = 'head';
+  else if (relY > 0.55) zone = 'body';
+
+  const reaction = pokeReactions[zone] || pokeReactions.default;
+  setEmotion(reaction.expression);
+  if (animController && animController.actions.has(reaction.anim)) {
+    animController.play(reaction.anim);
+  }
+  spawnParticles(hit.point, reaction.particles);
+
+  // Auto-return to neutral after 3s
+  setTimeout(() => setEmotion('neutral'), 3000);
+}
 
 // ── Scene Themes ────────────────────────────────────────────────────
 const SCENE_THEMES = {
@@ -976,11 +1171,14 @@ async function loadModel(url) {
     VRMUtils.rotateVRM0(vrm);
     currentVrm = vrm;
 
-    // Enhance MToon materials for anime look (UTS3-style)
+    // Enhance materials
     vrm.scene.traverse((obj) => {
       if (!obj.isMesh) return;
       const mat = obj.material;
       if (!mat) return;
+
+      // Force double-sided rendering (fixes PMX models with flipped normals)
+      mat.side = THREE.DoubleSide;
 
       // MToon materials (from VRM)
       if (mat.isMToonMaterial || mat.type === 'ShaderMaterial') {
@@ -1065,7 +1263,7 @@ function showError(msg) {
   errorEl.style.display = 'block';
 }
 
-const lookAtTarget = new THREE.Vector3(0, 1.3, 10);
+const _finalLookAt = new THREE.Vector3();
 
 function animate() {
   requestAnimationFrame(animate);
@@ -1087,8 +1285,19 @@ function animate() {
       if (head) { head.rotation.x = Math.sin(t * 0.5) * 0.02; head.rotation.z = Math.sin(t * 0.4) * 0.01; }
     }
 
-    // Blink
+    // ── Expression blending (smooth lerp) ──
     if (currentVrm.expressionManager) {
+      const exprNames = currentVrm.expressionManager.expressions.map(e => e.expressionName);
+      for (const name of exprNames) {
+        if (name === 'blink') continue; // blink handled separately
+        const target = targetExpressions[name] || 0;
+        const current = currentExpressions[name] || 0;
+        const next = current + (target - current) * Math.min(1, delta * EXPRESSION_LERP_SPEED);
+        currentExpressions[name] = next < 0.01 && target === 0 ? 0 : next;
+        currentVrm.expressionManager.setValue(name, currentExpressions[name]);
+      }
+
+      // Blink (overlay on top of any expression)
       const t = clock.getElapsedTime();
       if (t >= blinkEndTime && t >= nextBlinkTime) {
         currentVrm.expressionManager.setValue('blink', 1.0);
@@ -1099,9 +1308,32 @@ function animate() {
       }
     }
 
-    if (currentVrm.lookAt) currentVrm.lookAt.lookAt(lookAtTarget);
+    // ── Mouse head tracking with lookAtWeight ──
+    if (currentVrm.lookAt) {
+      if (animController && animController.entries.has(animController.current)) {
+        currentLookAtWeight = animController.entries.get(animController.current).lookAtWeight ?? 1.0;
+      }
+      smoothLookAt.lerp(mouseTarget, Math.min(1, delta * 4.0));
+      _finalLookAt.lerpVectors(DEFAULT_LOOK, smoothLookAt, currentLookAtWeight);
+      currentVrm.lookAt.lookAt(_finalLookAt);
+    }
+
     if (currentVrm.expressionManager) currentVrm.expressionManager.update();
     currentVrm.update(delta);
+
+    // ── Idle variety timer ──
+    if (isInIdleState && animController) {
+      idleVariantTimer += delta;
+      if (idleVariantTimer >= nextIdleSwitch) {
+        const pick = pickWeightedIdle();
+        if (animController.actions.has(pick)) animController.play(pick);
+        idleVariantTimer = 0;
+        nextIdleSwitch = 15 + Math.random() * 15;
+      }
+    }
+
+    // ── Particles ──
+    updateParticles(delta);
   }
 
   controls.update();
@@ -1111,37 +1343,79 @@ function animate() {
 // ── Expressions & Emotion-to-Animation ─────────────────────────────
 const emotionToExpression = {
   happy: 'happy', sad: 'sad', angry: 'angry',
-  surprised: 'surprised', relaxed: 'relaxed', neutral: 'neutral'
+  surprised: 'surprised', relaxed: 'relaxed', neutral: 'neutral',
+  horny: 'happy'
 };
 
 const emotionToAnim = {
-  happy: 'wave', surprised: 'wave', neutral: 'idle',
-  sad: 'idle', angry: 'idle', relaxed: 'idle',
-  thinking: 'think'
+  happy: 'happy_dance', surprised: 'surprised', neutral: 'idle',
+  sad: 'sad', angry: 'angry', relaxed: 'idle',
+  thinking: 'think', horny: 'blowkiss'
 };
 
 function setEmotion(emotion) {
   if (!currentVrm || !currentVrm.expressionManager) return;
-  // Reset all expressions
-  for (const expr of currentVrm.expressionManager.expressions) {
-    currentVrm.expressionManager.setValue(expr.expressionName, 0);
-  }
+  // Set target expressions for smooth blending
+  const newTargets = {};
   const name = emotionToExpression[emotion] || 'neutral';
-  if (name !== 'neutral') {
-    currentVrm.expressionManager.setValue(name, 1.0);
-  }
-  // Play matching animation
+  if (name !== 'neutral') newTargets[name] = 1.0;
+  targetExpressions = newTargets;
+
+  // Play matching animation (with fallback to idle)
   if (animController) {
-    const anim = emotionToAnim[emotion] || 'idle';
-    if (animController.actions.has(anim)) {
-      animController.play(anim);
-    }
+    let anim = emotionToAnim[emotion] || 'idle';
+    if (!animController.actions.has(anim)) anim = 'idle';
+    animController.play(anim);
+    isInIdleState = IDLE_VARIANTS.some(v => v.id === anim);
+    if (!isInIdleState) idleVariantTimer = 0;
   }
 }
 
 initScene();
 animate();
-loadModel('./static/models/character.vrm');
+
+// ── Mouse/Touch Event Listeners ─────────────────────────────────────
+renderer.domElement.addEventListener('mousemove', (e) => {
+  mouseTarget.copy(screenToLookTarget(e.clientX, e.clientY));
+});
+renderer.domElement.addEventListener('mouseleave', () => {
+  mouseTarget.copy(DEFAULT_LOOK);
+});
+renderer.domElement.addEventListener('touchmove', (e) => {
+  if (e.touches.length > 0) {
+    mouseTarget.copy(screenToLookTarget(e.touches[0].clientX, e.touches[0].clientY));
+  }
+}, { passive: true });
+renderer.domElement.addEventListener('touchend', () => {
+  mouseTarget.copy(DEFAULT_LOOK);
+}, { passive: true });
+
+// ── Click/Poke Detection (distinguish from drag) ────────────────────
+renderer.domElement.addEventListener('mousedown', (e) => {
+  mouseDownPos = { x: e.clientX, y: e.clientY };
+});
+renderer.domElement.addEventListener('mouseup', (e) => {
+  if (mouseDownPos && Math.hypot(e.clientX - mouseDownPos.x, e.clientY - mouseDownPos.y) < 5) {
+    handlePoke(e.clientX, e.clientY);
+  }
+  mouseDownPos = null;
+});
+renderer.domElement.addEventListener('touchstart', (e) => {
+  if (e.touches.length > 0) mouseDownPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+}, { passive: true });
+renderer.domElement.addEventListener('touchend', (e) => {
+  if (mouseDownPos && e.changedTouches.length > 0) {
+    const t = e.changedTouches[0];
+    if (Math.hypot(t.clientX - mouseDownPos.x, t.clientY - mouseDownPos.y) < 10) {
+      handlePoke(t.clientX, t.clientY);
+    }
+  }
+  mouseDownPos = null;
+}, { passive: true });
+
+// ── Load model (remember last choice) ───────────────────────────────
+const savedVrmPath = localStorage.getItem('ai-wife-vrm-model');
+loadModel(savedVrmPath || './static/models/character.vrm');
 
 // Scene selector
 const sceneSelector = document.getElementById('scene-selector');
@@ -1862,6 +2136,61 @@ async function sendMessage() {
 
 sendBtn.addEventListener('click', sendMessage);
 inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+
+// ── STT Voice Input ───────────────────────────────────────────────────
+const micBtn = document.getElementById('mic-btn');
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+    audioChunks = [];
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      if (audioChunks.length === 0) return;
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      micBtn.textContent = '⏳';
+      try {
+        const form = new FormData();
+        form.append('audio', blob, 'recording.webm');
+        const res = await fetch('/api/stt', { method: 'POST', body: form });
+        const data = await res.json();
+        if (data.text && data.text.trim()) {
+          inputEl.value = data.text.trim();
+          sendMessage();
+        }
+      } catch (e) {
+        console.error('STT failed:', e);
+      }
+      micBtn.textContent = '🎙️';
+    };
+    mediaRecorder.start();
+    isRecording = true;
+    micBtn.classList.add('recording');
+  } catch (e) {
+    console.error('Mic access denied:', e);
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+  }
+  isRecording = false;
+  micBtn.classList.remove('recording');
+}
+
+// Press and hold to record
+micBtn.addEventListener('mousedown', (e) => { e.preventDefault(); startRecording(); });
+micBtn.addEventListener('mouseup', stopRecording);
+micBtn.addEventListener('mouseleave', () => { if (isRecording) stopRecording(); });
+// Touch support
+micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); }, { passive: false });
+micBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); }, { passive: false });
 
 // ── Settings Panel ──────────────────────────────────────────────────
 const settingsModal = document.getElementById('settings-modal');
@@ -2893,6 +3222,306 @@ document.getElementById('save-preset-btn').addEventListener('click', () => {
 buildPresetSelect();
 buildRenderUI();
 setTimeout(applyRenderSettings, 1000);
+
+// ── VRM Character Tab ─────────────────────────────────────────────────
+let currentVrmUrl = savedVrmPath || './static/models/character.vrm';
+const vrmModelList = document.getElementById('vrm-model-list');
+const currentVrmInfo = document.getElementById('current-vrm-info');
+const vrmUploadBtn = document.getElementById('vrm-upload-btn');
+const vrmUploadInput = document.getElementById('vrm-upload-input');
+const vrmUploadStatus = document.getElementById('vrm-upload-status');
+
+function vrmDisplayName(url) {
+  return url.split('/').pop() || url;
+}
+
+function createVrmModelItem(m, isActive) {
+  const item = document.createElement('div');
+  item.style.cssText = `display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;border:1px solid ${isActive ? 'var(--accent)' : 'var(--glass-border)'};background:${isActive ? 'var(--accent-muted)' : 'rgba(28,30,42,0.4)'};`;
+
+  const info = document.createElement('div');
+  info.style.cssText = 'flex:1;min-width:0;';
+  const nameEl = document.createElement('div');
+  nameEl.style.cssText = 'font-size:12px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  nameEl.textContent = m.filename;
+  if (m.isDefault) {
+    const tag = document.createElement('span');
+    tag.style.cssText = 'color:var(--text-muted);font-size:10px;margin-left:4px;';
+    tag.textContent = '(預設)';
+    nameEl.appendChild(tag);
+  }
+  info.appendChild(nameEl);
+  if (m.size) {
+    const sizeEl = document.createElement('div');
+    sizeEl.style.cssText = 'font-size:10px;color:var(--text-muted);';
+    sizeEl.textContent = (m.size / 1024 / 1024).toFixed(1) + ' MB';
+    info.appendChild(sizeEl);
+  }
+  item.appendChild(info);
+
+  if (!isActive) {
+    const useBtn = document.createElement('button');
+    useBtn.textContent = '使用';
+    useBtn.style.cssText = 'padding:4px 10px;background:var(--accent);color:var(--bg-primary);border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap;';
+    useBtn.onclick = async () => {
+      currentVrmUrl = m.url;
+      localStorage.setItem('ai-wife-vrm-model', m.url);
+      currentVrmInfo.textContent = '目前：' + m.filename;
+      await loadModel(m.url);
+      refreshVrmList();
+    };
+    item.appendChild(useBtn);
+  } else {
+    const badge = document.createElement('span');
+    badge.textContent = '使用中';
+    badge.style.cssText = 'font-size:10px;color:var(--accent);font-weight:600;white-space:nowrap;';
+    item.appendChild(badge);
+  }
+
+  if (!m.isDefault) {
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '刪除';
+    delBtn.style.cssText = 'padding:4px 8px;background:rgba(255,80,80,0.2);color:#ff6b6b;border:1px solid rgba(255,80,80,0.3);border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;';
+    delBtn.onclick = async () => {
+      if (!confirm('確定刪除 ' + m.filename + '？')) return;
+      try {
+        await fetch('/api/vrm/' + encodeURIComponent(m.filename), { method: 'DELETE' });
+        if (currentVrmUrl === m.url) {
+          currentVrmUrl = './static/models/character.vrm';
+          localStorage.setItem('ai-wife-vrm-model', currentVrmUrl);
+          currentVrmInfo.textContent = '目前：character.vrm';
+          await loadModel(currentVrmUrl);
+        }
+        refreshVrmList();
+      } catch (e) { console.error('Delete failed:', e); }
+    };
+    item.appendChild(delBtn);
+  }
+  return item;
+}
+
+async function refreshVrmList() {
+  vrmModelList.textContent = '';
+  const models = [];
+  models.push({ filename: 'character.vrm', url: './static/models/character.vrm', isDefault: true });
+  try {
+    const res = await fetch('/api/vrm/list');
+    const data = await res.json();
+    for (const m of data.models || []) {
+      models.push({ filename: m.filename, url: '/vrm/' + encodeURIComponent(m.filename), size: m.size, uploaded_at: m.uploaded_at, isDefault: false });
+    }
+  } catch (e) { console.warn('Failed to fetch VRM list:', e); }
+
+  for (const m of models) {
+    const isActive = currentVrmUrl === m.url || (m.isDefault && currentVrmUrl === './static/models/character.vrm');
+    vrmModelList.appendChild(createVrmModelItem(m, isActive));
+  }
+}
+
+vrmUploadBtn.onclick = () => vrmUploadInput.click();
+vrmUploadInput.onchange = async () => {
+  const file = vrmUploadInput.files[0];
+  if (!file) return;
+  vrmUploadStatus.textContent = '上傳中...';
+  vrmUploadBtn.disabled = true;
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/vrm/upload', { method: 'POST', body: form });
+    if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Upload failed'); }
+    const data = await res.json();
+    vrmUploadStatus.textContent = '上傳成功：' + data.filename;
+    currentVrmUrl = '/vrm/' + encodeURIComponent(data.filename);
+    localStorage.setItem('ai-wife-vrm-model', currentVrmUrl);
+    currentVrmInfo.textContent = '目前：' + data.filename;
+    await loadModel(currentVrmUrl);
+    refreshVrmList();
+  } catch (e) {
+    vrmUploadStatus.textContent = '上傳失敗：' + e.message;
+  }
+  vrmUploadBtn.disabled = false;
+  vrmUploadInput.value = '';
+};
+
+// PMX upload + convert
+const pmxUploadBtn = document.getElementById('pmx-upload-btn');
+const pmxUploadInput = document.getElementById('pmx-upload-input');
+pmxUploadBtn.onclick = () => pmxUploadInput.click();
+pmxUploadInput.onchange = async () => {
+  const file = pmxUploadInput.files[0];
+  if (!file) return;
+  vrmUploadStatus.textContent = 'PMX 轉換中（可能需要 1-2 分鐘）...';
+  vrmUploadStatus.style.color = 'var(--accent)';
+  pmxUploadBtn.disabled = true;
+  vrmUploadBtn.disabled = true;
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/vrm/convert-pmx', { method: 'POST', body: form });
+    if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Conversion failed'); }
+    const data = await res.json();
+    vrmUploadStatus.textContent = '轉換成功：' + data.filename;
+    vrmUploadStatus.style.color = 'var(--accent)';
+    currentVrmUrl = data.url;
+    localStorage.setItem('ai-wife-vrm-model', currentVrmUrl);
+    currentVrmInfo.textContent = '目前：' + data.filename;
+    await loadModel(currentVrmUrl);
+    refreshVrmList();
+  } catch (e) {
+    vrmUploadStatus.textContent = 'PMX 轉換失敗：' + e.message;
+    vrmUploadStatus.style.color = '#ff6b6b';
+  }
+  pmxUploadBtn.disabled = false;
+  vrmUploadBtn.disabled = false;
+  pmxUploadInput.value = '';
+};
+
+// Load VRM list when character tab is activated
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.tab === 'tab-character') refreshVrmList();
+  });
+});
+
+currentVrmInfo.textContent = '目前：' + vrmDisplayName(currentVrmUrl);
+
+// ── Animation Management Tab ──────────────────────────────────────────
+const animList = document.getElementById('anim-list');
+const animUploadBtn = document.getElementById('anim-upload-btn');
+const animUploadInput = document.getElementById('anim-upload-input');
+const animUploadStatus = document.getElementById('anim-upload-status');
+const animIdInput = document.getElementById('anim-id-input');
+const animLabelInput = document.getElementById('anim-label-input');
+const animLoopCheck = document.getElementById('anim-loop-check');
+const animReturnSelect = document.getElementById('anim-return-select');
+
+const CORE_ANIMS = new Set(['idle', 'wave', 'think']);
+
+function createAnimItem(entry) {
+  const item = document.createElement('div');
+  item.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;border:1px solid var(--glass-border);background:rgba(28,30,42,0.4);';
+
+  const info = document.createElement('div');
+  info.style.cssText = 'flex:1;min-width:0;';
+  const nameEl = document.createElement('div');
+  nameEl.style.cssText = 'font-size:12px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  nameEl.textContent = entry.label + ' (' + entry.id + ')';
+  info.appendChild(nameEl);
+  const metaEl = document.createElement('div');
+  metaEl.style.cssText = 'font-size:10px;color:var(--text-muted);';
+  const tags = [];
+  if (entry.loop) tags.push('循環');
+  if (entry.autoReturnTo) tags.push('→' + entry.autoReturnTo);
+  if (CORE_ANIMS.has(entry.id)) tags.push('核心');
+  metaEl.textContent = tags.join(' · ');
+  info.appendChild(metaEl);
+  item.appendChild(info);
+
+  // Preview button
+  const playBtn = document.createElement('button');
+  playBtn.textContent = '▶';
+  playBtn.style.cssText = 'padding:4px 8px;background:var(--accent-muted);color:var(--accent);border:1px solid var(--glass-border);border-radius:4px;cursor:pointer;font-size:12px;';
+  playBtn.onclick = () => {
+    if (animController && animController.actions.has(entry.id)) {
+      animController.play(entry.id);
+    }
+  };
+  item.appendChild(playBtn);
+
+  // Delete button (not for core)
+  if (!CORE_ANIMS.has(entry.id)) {
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '刪除';
+    delBtn.style.cssText = 'padding:4px 8px;background:rgba(255,80,80,0.2);color:#ff6b6b;border:1px solid rgba(255,80,80,0.3);border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;';
+    delBtn.onclick = async () => {
+      if (!confirm('確定刪除動作 ' + entry.label + '？')) return;
+      try {
+        const res = await fetch('/api/animations/' + encodeURIComponent(entry.id), { method: 'DELETE' });
+        if (!res.ok) { const err = await res.json(); alert(err.detail); return; }
+        refreshAnimList();
+      } catch (e) { console.error('Delete animation failed:', e); }
+    };
+    item.appendChild(delBtn);
+  }
+
+  return item;
+}
+
+async function refreshAnimList() {
+  animList.textContent = '';
+  try {
+    const res = await fetch('/api/animations/list');
+    const data = await res.json();
+    for (const entry of data.animations || []) {
+      animList.appendChild(createAnimItem(entry));
+    }
+  } catch (e) { console.warn('Failed to fetch animations:', e); }
+}
+
+animUploadBtn.onclick = () => {
+  if (!animIdInput.value.trim()) {
+    animUploadStatus.textContent = '請先填寫動作 ID';
+    animUploadStatus.style.color = '#ff6b6b';
+    return;
+  }
+  animUploadInput.click();
+};
+
+animUploadInput.onchange = async () => {
+  const file = animUploadInput.files[0];
+  if (!file) return;
+  const id = animIdInput.value.trim();
+  if (!id) { animUploadStatus.textContent = '請填寫動作 ID'; return; }
+
+  animUploadStatus.textContent = '上傳中...';
+  animUploadStatus.style.color = 'var(--text-muted)';
+  animUploadBtn.disabled = true;
+
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('id', id);
+    form.append('label', animLabelInput.value.trim() || id);
+    form.append('loop', animLoopCheck.checked);
+    form.append('autoReturnTo', animReturnSelect.value);
+    form.append('lookAtWeight', '0.6');
+    form.append('priority', '2');
+
+    const res = await fetch('/api/animations/upload', { method: 'POST', body: form });
+    if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Upload failed'); }
+    const data = await res.json();
+    animUploadStatus.textContent = '上傳成功：' + data.id;
+    animUploadStatus.style.color = 'var(--accent)';
+
+    // Reload animations into the controller
+    if (currentVrm) {
+      try {
+        const regRes = await fetch('./static/animations/registry.json');
+        const entries = await regRes.json();
+        animController = new AnimController(currentVrm);
+        await animController.loadAll(entries);
+        animController.play('idle');
+      } catch (e) { console.warn('Animation reload failed:', e); }
+    }
+
+    refreshAnimList();
+    animIdInput.value = '';
+    animLabelInput.value = '';
+    animLoopCheck.checked = false;
+  } catch (e) {
+    animUploadStatus.textContent = '上傳失敗：' + e.message;
+    animUploadStatus.style.color = '#ff6b6b';
+  }
+  animUploadBtn.disabled = false;
+  animUploadInput.value = '';
+};
+
+// Refresh animation list when tab is shown
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.tab === 'tab-animations') refreshAnimList();
+  });
+});
 
 // ── Return to Setup from Settings ───────────────────────────────────
 // Add a "回到起始畫面" button in settings

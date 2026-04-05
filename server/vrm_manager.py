@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-MAX_VRM_SIZE = 50 * 1024 * 1024
+MAX_VRM_SIZE = 500 * 1024 * 1024
 GLTF_MAGIC = b'glTF'
 
 
