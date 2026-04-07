@@ -213,17 +213,30 @@ class AgentOrchestrator:
 
             # Last iteration: no tools, just summary
             is_last = iteration >= MAX_REACT_ITERATIONS - 1
+            # Strip tool-role messages when not sending tools (DashScope rejects them)
+            send_messages = messages if not is_last else [
+                m for m in messages if m.get("role") != "tool"
+            ]
             try:
                 next_result = await self.llm.chat(
-                    messages,
+                    send_messages,
                     tools=None if is_last else tools,
                     think=False,
                     max_tokens=512 if is_last else 1024,
                 )
             except Exception as e:
                 logger.error(f"LLM call failed in confirm_plan iteration {iteration}: {e}")
-                yield json.dumps({"type": "error", "text": f"LLM 呼叫失敗: {str(e)[:80]}"}, ensure_ascii=False)
-                yield json.dumps({"type": "done", "emotion": "sad", "text": "抱歉老公，處理的時候出了點問題..."}, ensure_ascii=False)
+                # Fallback: directly report tool results instead of crashing
+                fallback_parts = []
+                for r in results:
+                    content = r.get("result", {}).get("content", "")
+                    error = r.get("result", {}).get("error", "")
+                    if content:
+                        fallback_parts.append(content)
+                    elif error:
+                        fallback_parts.append(f"(錯誤: {error})")
+                fallback_text = "\n".join(fallback_parts) if fallback_parts else "工具已執行完成。"
+                yield json.dumps({"type": "done", "emotion": "neutral", "text": fallback_text}, ensure_ascii=False)
                 return
 
             if (
@@ -393,6 +406,16 @@ class AgentOrchestrator:
         if memories:
             memory_text = "\n".join([f"- {m['content']}" for m in memories])
             system_prompt += f"\n\n## Relevant Memories\n{memory_text}"
+
+        # Inject learned skills
+        try:
+            from skills.skill_loader import skill_loader
+            skills_prompt = skill_loader.get_prompt_injection()
+            if skills_prompt:
+                system_prompt += f"\n\n{skills_prompt}"
+        except Exception:
+            pass
+
         history = self._get_history(client_id)
         history.append({"role": "user", "content": message})
         self._trim_history(client_id)
@@ -505,6 +528,16 @@ class AgentOrchestrator:
         if memories:
             memory_text = "\n".join([f"- {m['content']}" for m in memories])
             system_prompt += f"\n\n## Relevant Memories\n{memory_text}"
+
+        # Inject learned skills
+        try:
+            from skills.skill_loader import skill_loader
+            skills_prompt = skill_loader.get_prompt_injection()
+            if skills_prompt:
+                system_prompt += f"\n\n{skills_prompt}"
+        except Exception:
+            pass
+
         history = self._get_history(client_id)
         history.append({"role": "user", "content": message})
         self._trim_history(client_id)

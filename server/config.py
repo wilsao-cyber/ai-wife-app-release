@@ -52,8 +52,8 @@ class TTSConfig(BaseSettings):
 
 
 class STTConfig(BaseSettings):
-    provider: str = "whisper"
-    model: str = "medium"
+    provider: str = "sensevoice"
+    model: str = "iic/SenseVoiceSmall"
     language: str = "auto"
 
 

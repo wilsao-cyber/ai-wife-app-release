@@ -117,7 +117,7 @@
     display: flex; flex-direction: column; z-index: 10;
   }
   #messages {
-    flex: 1; overflow-y: auto; padding: 12px 16px; min-height: 0;
+    flex: 1; overflow-y: auto; padding: 12px 16px 72px 16px; min-height: 0;
     display: flex; flex-direction: column; gap: 10px;
     scroll-behavior: smooth;
   }
@@ -261,8 +261,8 @@
 
   /* ── Settings Modal ──────────────────────────────────────────────── */
   #settings-modal {
-    position: fixed; top: 0; right: 0; width: 340px; height: 100vh;
-    background: rgba(42, 45, 62, 0.85); backdrop-filter: blur(16px);
+    position: fixed; top: 0; right: 0; width: min(520px, 90vw); height: 100vh;
+    background: rgba(42, 45, 62, 0.92); backdrop-filter: blur(16px);
     z-index: 100; transform: translateX(100%);
     transition: transform 0.3s ease;
     border-left: 1px solid var(--glass-border);
@@ -277,8 +277,8 @@
   .modal-header { padding: 16px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; }
   .modal-header h2 { font-size: 16px; color: var(--accent); font-weight: 600; }
   #close-settings { background: none; border: none; color: var(--text-secondary); font-size: 18px; cursor: pointer; }
-  .tabs { display: flex; gap: 4px; padding: 8px 12px; }
-  .tab-btn { flex: 1; padding: 8px; border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 12px; border-radius: 10px; transition: all 0.2s; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px; }
+  .tab-btn { padding: 6px 10px; border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 11px; border-radius: 10px; transition: all 0.2s; white-space: nowrap; }
   .tab-btn.active { color: var(--accent); background: var(--accent-muted); }
   .tab-btn:hover { color: var(--text-primary); }
   .tab-body { flex: 1; padding: 16px; overflow-y: auto; display: none; }
@@ -525,6 +525,7 @@
       <button class="tab-btn" data-tab="tab-voice">語音</button>
       <button class="tab-btn" data-tab="tab-sfx">音效</button>
       <button class="tab-btn" data-tab="tab-render">渲染</button>
+      <button class="tab-btn" data-tab="tab-music">音樂</button>
       <button class="tab-btn" data-tab="tab-character">角色</button>
       <button class="tab-btn" data-tab="tab-animations">動作</button>
     </div>
@@ -679,6 +680,55 @@
         <button id="save-preset-btn" style="flex:1;padding:8px;background:var(--accent-muted);color:var(--accent);border:1px solid var(--glass-border);border-radius:6px;cursor:pointer;font-size:12px;">存為新模式</button>
       </div>
     </div>
+    <div class="tab-body" id="tab-music">
+      <label style="color:var(--accent);font-size:13px;font-weight:bold;display:block;margin-bottom:10px;">🎵 音樂設定</label>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:12px;color:var(--text-secondary);">背景音樂</span>
+          <button id="bgm-toggle" style="padding:2px 10px;border-radius:10px;border:1px solid var(--glass-border);background:none;color:var(--text-secondary);cursor:pointer;font-size:12px;">ON</button>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">BGM 音量</label>
+          <input id="bgm-vol-slider" type="range" min="0" max="100" value="15" style="width:100%;accent-color:var(--accent);">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">選曲</label>
+          <select id="bgm-select" style="width:100%;padding:6px;background:rgba(28,30,42,0.6);color:var(--text-primary);border:1px solid var(--glass-border);border-radius:6px;font-size:11px;outline:none;">
+            <option value="auto">自動（跟隨場景）</option>
+            <option value="/audio-assets/bgm/kks_bgm_00.wav">早晨日常</option>
+            <option value="/audio-assets/bgm/kks_bgm_01.wav">商店悠閒</option>
+            <option value="/audio-assets/bgm/kks_bgm_02.wav">H 場景</option>
+            <option value="/audio-assets/bgm/kks_bgm_03.wav">放鬆美容</option>
+            <option value="/audio-assets/bgm/kks_bgm_06.wav">邂逅相遇</option>
+            <option value="/audio-assets/bgm/kks_bgm_07.wav">日常對話</option>
+            <option value="/audio-assets/bgm/kks_bgm_08.wav">戀人氛圍</option>
+            <option value="/audio-assets/bgm/kks_bgm_09.wav">約會跟隨</option>
+            <option value="/audio-assets/bgm/kks_bgm_13.wav">回憶感傷</option>
+            <option value="/audio-assets/bgm/kks_bgm_14.wav">秘密海灘</option>
+            <option value="/audio-assets/bgm/kks_bgm_15.wav">夜晚散步</option>
+            <option value="/audio-assets/bgm/kks_bgm_16.wav">浪漫</option>
+            <option value="/audio-assets/bgm/kks_bgm_17.wav">悲傷</option>
+            <option value="/audio-assets/bgm/kks_bgm_22.wav">套房</option>
+            <option value="/audio-assets/bgm/kks_bgm_23.wav">套房約會</option>
+          </select>
+        </div>
+        <div style="border-top:1px solid var(--glass-border);padding-top:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:12px;color:var(--text-secondary);">環境音效</span>
+            <button id="ambient-toggle" style="padding:2px 10px;border-radius:10px;border:1px solid var(--glass-border);background:none;color:var(--text-secondary);cursor:pointer;font-size:12px;">ON</button>
+          </div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin:6px 0 4px;">環境音量</label>
+          <input id="ambient-vol-slider" type="range" min="0" max="100" value="10" style="width:100%;accent-color:var(--accent);">
+        </div>
+        <div style="border-top:1px solid var(--glass-border);padding-top:10px;margin-top:10px;">
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:6px;">自訂 BGM</label>
+          <div id="custom-bgm-list" style="display:flex;flex-direction:column;gap:4px;max-height:120px;overflow-y:auto;margin-bottom:8px;"></div>
+          <input id="bgm-upload-input" type="file" accept=".wav,.mp3,.ogg,.flac,.m4a" hidden>
+          <button id="bgm-upload-btn" style="width:100%;padding:8px;background:var(--accent-muted);color:var(--accent);border:1px solid var(--glass-border);border-radius:6px;cursor:pointer;font-size:11px;">上傳 BGM</button>
+          <div id="bgm-upload-status" style="font-size:10px;color:var(--text-muted);margin-top:4px;"></div>
+        </div>
+      </div>
+    </div>
     <div class="tab-body" id="tab-character">
       <label style="color:var(--accent);font-size:13px;font-weight:bold;display:block;margin-bottom:10px;">👤 角色模型</label>
       <div id="current-vrm-info" style="font-size:11px;color:var(--text-muted);margin-bottom:10px;padding:6px 10px;background:var(--accent-muted);border-radius:6px;">目前：character.vrm</div>
@@ -774,7 +824,7 @@ function retargetMixamoClip(clip, fbxRoot, vrm, name) {
 
   const hipsNode = fbxRoot.getObjectByName('mixamorigHips');
   const motionHipsY = hipsNode ? hipsNode.position.y : 1;
-  const vrmHipsY = vrm.humanoid.normalizedRestPose.hips?.position?.[1] ?? 1;
+  const vrmHipsY = vrm.humanoid.normalizedRestPose?.hips?.position?.[1] ?? 1;
   const hipsScale = vrmHipsY / motionHipsY;
 
   for (const track of clip.tracks) {
@@ -850,6 +900,11 @@ class AnimController {
         if (!rawClip) continue;
 
         const clip = retargetMixamoClip(rawClip, fbx, this.vrm, entry.id);
+        if (clip.tracks.length === 0) {
+          console.warn(`Retarget produced 0 tracks for ${entry.id}, raw had ${rawClip.tracks.length} tracks`);
+          continue;
+        }
+        console.log(`Animation ${entry.id}: ${clip.tracks.length} tracks retargeted`);
         const action = this.mixer.clipAction(clip);
         const loop = entry.loop ?? true;
         action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
@@ -1088,6 +1143,160 @@ function applySceneTheme(themeName) {
     renderer.toneMappingExposure = theme.toneMappingExposure;
   }
   localStorage.setItem('ai-wife-scene', themeName);
+  // Update audio when scene changes
+  if (typeof switchSceneAudio === 'function') switchSceneAudio(themeName);
+}
+
+// ── Audio Systems: BGM + Ambient + UI SFX ──────────────────────────
+const SCENE_BGM = {
+  home: '/audio-assets/bgm/kks_bgm_07.wav',
+  sakura: '/audio-assets/bgm/kks_bgm_08.wav',
+  fantasy: '/audio-assets/bgm/kks_bgm_16.wav',
+  night: '/audio-assets/bgm/kks_bgm_15.wav',
+};
+const EMOTION_BGM_OVERRIDE = {
+  sad: '/audio-assets/bgm/kks_bgm_17.wav',
+  happy: '/audio-assets/bgm/kks_bgm_08.wav',
+  horny: '/audio-assets/bgm/kks_bgm_02.wav',
+};
+const SCENE_AMBIENT = {
+  home: null,
+  sakura: '/audio-assets/se/map/se_ks_action_006.wav',
+  fantasy: '/audio-assets/se/map/se_ks_action_001.wav',
+  night: '/audio-assets/se/map/se_ks_action_004.wav',
+};
+const UI_SFX = {
+  send: '/audio-assets/se/se_ks_adv_001.wav',
+  receive: '/audio-assets/se/se_ks_adv_004.wav',
+  select: '/audio-assets/se/se_ks_adv_000.wav',
+  transition: '/audio-assets/se/se_ks_adv_005.wav',
+};
+
+let bgmAudio = null;
+let bgmGain = null;
+let ambientAudio = null;
+let ambientGain = null;
+let audioCtx = null;
+let uiSfxBuffers = {};
+let bgmEnabled = localStorage.getItem('ai-wife-bgm') !== 'off';
+let bgmVolume = parseFloat(localStorage.getItem('ai-wife-bgm-vol') || '0.15');
+let ambientVolume = 0.1;
+let uiSfxEnabled = localStorage.getItem('ai-wife-uisfx') !== 'off';
+let currentBgmUrl = '';
+let currentAmbientUrl = '';
+let emotionBgmTimeout = null;
+
+function ensureAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function fadeAudio(audio, gainNode, targetVol, duration, onDone) {
+  if (!gainNode) { if (onDone) onDone(); return; }
+  const start = gainNode.gain.value;
+  const ctx = ensureAudioCtx();
+  gainNode.gain.cancelScheduledValues(ctx.currentTime);
+  gainNode.gain.setValueAtTime(start, ctx.currentTime);
+  gainNode.gain.linearRampToValueAtTime(targetVol, ctx.currentTime + duration);
+  if (onDone) setTimeout(onDone, duration * 1000 + 50);
+}
+
+function playBgm(url, vol) {
+  if (!bgmEnabled || !url) return;
+  if (currentBgmUrl === url && bgmAudio && !bgmAudio.paused) return;
+  const ctx = ensureAudioCtx();
+
+  // Fade out old
+  if (bgmAudio && !bgmAudio.paused) {
+    const oldAudio = bgmAudio;
+    const oldGain = bgmGain;
+    fadeAudio(oldAudio, oldGain, 0, 1.2, () => { oldAudio.pause(); });
+  }
+
+  const audio = new Audio(url);
+  audio.loop = true;
+  audio.crossOrigin = 'anonymous';
+  const source = ctx.createMediaElementSource(audio);
+  const gain = ctx.createGain();
+  gain.gain.value = 0;
+  source.connect(gain);
+  gain.connect(ctx.destination);
+  bgmAudio = audio;
+  bgmGain = gain;
+  currentBgmUrl = url;
+  audio.play().then(() => fadeAudio(audio, gain, vol || bgmVolume, 1.5)).catch(() => {});
+}
+
+function playAmbient(url) {
+  if (!url) { stopAmbient(); return; }
+  if (currentAmbientUrl === url && ambientAudio && !ambientAudio.paused) return;
+  stopAmbient();
+  const ctx = ensureAudioCtx();
+  const audio = new Audio(url);
+  audio.loop = true;
+  audio.crossOrigin = 'anonymous';
+  const source = ctx.createMediaElementSource(audio);
+  const gain = ctx.createGain();
+  gain.gain.value = 0;
+  source.connect(gain);
+  gain.connect(ctx.destination);
+  ambientAudio = audio;
+  ambientGain = gain;
+  currentAmbientUrl = url;
+  audio.play().then(() => fadeAudio(audio, gain, ambientVolume, 2.0)).catch(() => {});
+}
+
+function stopAmbient() {
+  if (ambientAudio && !ambientAudio.paused) {
+    const old = ambientAudio;
+    const oldG = ambientGain;
+    fadeAudio(old, oldG, 0, 1.0, () => old.pause());
+  }
+  ambientAudio = null;
+  ambientGain = null;
+  currentAmbientUrl = '';
+}
+
+function switchSceneAudio(scene) {
+  playBgm(SCENE_BGM[scene] || SCENE_BGM.home);
+  playAmbient(SCENE_AMBIENT[scene] || null);
+}
+
+function triggerEmotionBgm(emotion) {
+  const url = EMOTION_BGM_OVERRIDE[emotion];
+  if (!url || !bgmEnabled) return;
+  // Temporarily switch BGM, revert after 30s
+  if (emotionBgmTimeout) clearTimeout(emotionBgmTimeout);
+  playBgm(url);
+  emotionBgmTimeout = setTimeout(() => {
+    playBgm(SCENE_BGM[currentSceneTheme] || SCENE_BGM.home);
+    emotionBgmTimeout = null;
+  }, 30000);
+}
+
+// Preload UI SFX
+async function preloadUiSfx() {
+  const ctx = ensureAudioCtx();
+  for (const [key, url] of Object.entries(UI_SFX)) {
+    try {
+      const res = await fetch(url);
+      const buf = await res.arrayBuffer();
+      uiSfxBuffers[key] = await ctx.decodeAudioData(buf);
+    } catch (e) { /* skip */ }
+  }
+}
+
+function playUiSfx(key) {
+  if (!uiSfxEnabled || !uiSfxBuffers[key]) return;
+  const ctx = ensureAudioCtx();
+  const source = ctx.createBufferSource();
+  source.buffer = uiSfxBuffers[key];
+  const gain = ctx.createGain();
+  gain.gain.value = 0.3;
+  source.connect(gain);
+  gain.connect(ctx.destination);
+  source.start();
 }
 
 function initScene() {
@@ -1177,8 +1386,10 @@ async function loadModel(url) {
       const mat = obj.material;
       if (!mat) return;
 
-      // Force double-sided rendering (fixes PMX models with flipped normals)
-      mat.side = THREE.DoubleSide;
+      // Double-sided only for opaque materials (transparent face layers would z-fight)
+      if (!mat.transparent && mat.opacity >= 1.0) {
+        mat.side = THREE.DoubleSide;
+      }
 
       // MToon materials (from VRM)
       if (mat.isMToonMaterial || mat.type === 'ShaderMaterial') {
@@ -1240,7 +1451,7 @@ async function loadModel(url) {
 
     // Load animations from registry
     try {
-      const res = await fetch('./static/animations/registry.json');
+      const res = await fetch('./static/animations/registry.json?v=' + Date.now());
       const entries = await res.json();
       animController = new AnimController(vrm);
       await animController.loadAll(entries);
@@ -1749,6 +1960,7 @@ async function sendMessage() {
   if (!text) return;
   inputEl.value = '';
   sendBtn.disabled = true;
+  // playUiSfx('send');
 
   addMessageObj('user', `<span>${text}</span>`, 'user');
 
@@ -1983,6 +2195,7 @@ async function sendMessage() {
               }
               if (evt.emotion) {
                 setEmotion(evt.emotion);
+                triggerEmotionBgm(evt.emotion);
                 const tag = document.createElement('div');
                 tag.className = 'emotion-tag';
                 tag.textContent = evt.emotion;
@@ -2137,7 +2350,7 @@ async function sendMessage() {
 sendBtn.addEventListener('click', sendMessage);
 inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
-// ── STT Voice Input ───────────────────────────────────────────────────
+// ── STT Voice Input (click-to-toggle) ─────────────────────────────────
 const micBtn = document.getElementById('mic-btn');
 let mediaRecorder = null;
 let audioChunks = [];
@@ -2157,6 +2370,8 @@ async function startRecording() {
       try {
         const form = new FormData();
         form.append('audio', blob, 'recording.webm');
+        const sttLang = langSel.value === 'ja' ? 'ja' : langSel.value === 'en' ? 'en' : 'zh';
+        form.append('language', sttLang);
         const res = await fetch('/api/stt', { method: 'POST', body: form });
         const data = await res.json();
         if (data.text && data.text.trim()) {
@@ -2168,9 +2383,11 @@ async function startRecording() {
       }
       micBtn.textContent = '🎙️';
     };
-    mediaRecorder.start();
+    // Collect chunks every 500ms to avoid data loss
+    mediaRecorder.start(500);
     isRecording = true;
     micBtn.classList.add('recording');
+    micBtn.textContent = '⏹️';
   } catch (e) {
     console.error('Mic access denied:', e);
   }
@@ -2184,17 +2401,20 @@ function stopRecording() {
   micBtn.classList.remove('recording');
 }
 
-// Press and hold to record
-micBtn.addEventListener('mousedown', (e) => { e.preventDefault(); startRecording(); });
-micBtn.addEventListener('mouseup', stopRecording);
-micBtn.addEventListener('mouseleave', () => { if (isRecording) stopRecording(); });
-// Touch support
-micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); }, { passive: false });
-micBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); }, { passive: false });
+// Click to toggle recording
+micBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (isRecording) {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+});
 
 // ── Settings Panel ──────────────────────────────────────────────────
 const settingsModal = document.getElementById('settings-modal');
 document.getElementById('settings-btn').onclick = () => {
+  // playUiSfx('select');
   settingsModal.classList.remove('hidden'); settingsModal.classList.add('visible');
   loadSettingsData();
 };
@@ -2986,6 +3206,12 @@ enterBtn.addEventListener('click', async () => {
   enterBtn.disabled = false;
   showToast('歡迎回來 💕');
   updateModelDisplay();
+
+  // Start BGM + ambient (user just clicked, so autoplay is allowed)
+  preloadUiSfx();
+  switchSceneAudio(localStorage.getItem('ai-wife-scene') || 'home');
+  // playUiSfx('transition');
+
   // Play welcome TTS (user just clicked, so autoplay is allowed)
   if (welcomeAudioUrl && ttsEnabled) {
     setTimeout(() => {
@@ -3520,6 +3746,168 @@ animUploadInput.onchange = async () => {
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (btn.dataset.tab === 'tab-animations') refreshAnimList();
+  });
+});
+
+// ── Music Settings Controls ──────────────────────────────────────────
+const bgmToggleBtn = document.getElementById('bgm-toggle');
+const bgmVolSlider = document.getElementById('bgm-vol-slider');
+const bgmSelectEl = document.getElementById('bgm-select');
+const ambientToggleBtn = document.getElementById('ambient-toggle');
+const ambientVolSlider = document.getElementById('ambient-vol-slider');
+
+// Init from localStorage
+bgmToggleBtn.textContent = bgmEnabled ? 'ON' : 'OFF';
+bgmToggleBtn.style.color = bgmEnabled ? 'var(--accent)' : 'var(--text-muted)';
+bgmVolSlider.value = Math.round(bgmVolume * 100);
+ambientVolSlider.value = Math.round(ambientVolume * 100);
+
+let ambientEnabled = localStorage.getItem('ai-wife-ambient') !== 'off';
+ambientToggleBtn.textContent = ambientEnabled ? 'ON' : 'OFF';
+ambientToggleBtn.style.color = ambientEnabled ? 'var(--accent)' : 'var(--text-muted)';
+
+let bgmManualUrl = localStorage.getItem('ai-wife-bgm-select') || 'auto';
+bgmSelectEl.value = bgmManualUrl;
+
+bgmToggleBtn.onclick = () => {
+  bgmEnabled = !bgmEnabled;
+  localStorage.setItem('ai-wife-bgm', bgmEnabled ? 'on' : 'off');
+  bgmToggleBtn.textContent = bgmEnabled ? 'ON' : 'OFF';
+  bgmToggleBtn.style.color = bgmEnabled ? 'var(--accent)' : 'var(--text-muted)';
+  if (bgmEnabled) {
+    const url = bgmManualUrl === 'auto' ? (SCENE_BGM[currentSceneTheme] || SCENE_BGM.home) : bgmManualUrl;
+    playBgm(url);
+  } else if (bgmAudio) {
+    bgmAudio.pause();
+    currentBgmUrl = '';
+  }
+};
+
+bgmVolSlider.oninput = () => {
+  bgmVolume = bgmVolSlider.value / 100;
+  localStorage.setItem('ai-wife-bgm-vol', String(bgmVolume));
+  if (bgmGain) bgmGain.gain.value = bgmVolume;
+};
+
+bgmSelectEl.onchange = () => {
+  bgmManualUrl = bgmSelectEl.value;
+  localStorage.setItem('ai-wife-bgm-select', bgmManualUrl);
+  if (!bgmEnabled) return;
+  if (bgmManualUrl === 'auto') {
+    playBgm(SCENE_BGM[currentSceneTheme] || SCENE_BGM.home);
+  } else {
+    playBgm(bgmManualUrl);
+  }
+};
+
+ambientToggleBtn.onclick = () => {
+  ambientEnabled = !ambientEnabled;
+  localStorage.setItem('ai-wife-ambient', ambientEnabled ? 'on' : 'off');
+  ambientToggleBtn.textContent = ambientEnabled ? 'ON' : 'OFF';
+  ambientToggleBtn.style.color = ambientEnabled ? 'var(--accent)' : 'var(--text-muted)';
+  if (ambientEnabled) {
+    playAmbient(SCENE_AMBIENT[currentSceneTheme] || null);
+  } else {
+    stopAmbient();
+  }
+};
+
+ambientVolSlider.oninput = () => {
+  ambientVolume = ambientVolSlider.value / 100;
+  if (ambientGain) ambientGain.gain.value = ambientVolume;
+};
+
+// Override switchSceneAudio to respect manual BGM selection
+const _origSwitchSceneAudio = switchSceneAudio;
+switchSceneAudio = function(scene) {
+  if (bgmEnabled) {
+    if (bgmManualUrl === 'auto') {
+      playBgm(SCENE_BGM[scene] || SCENE_BGM.home);
+    }
+    // If manual, don't change BGM on scene switch
+  }
+  if (ambientEnabled) {
+    playAmbient(SCENE_AMBIENT[scene] || null);
+  }
+};
+
+// ── Custom BGM Upload ─────────────────────────────────────────────────
+const customBgmList = document.getElementById('custom-bgm-list');
+const bgmUploadBtn = document.getElementById('bgm-upload-btn');
+const bgmUploadInput = document.getElementById('bgm-upload-input');
+const bgmUploadStatusEl = document.getElementById('bgm-upload-status');
+
+async function refreshCustomBgmList() {
+  customBgmList.textContent = '';
+  try {
+    const res = await fetch('/api/bgm/list');
+    const data = await res.json();
+    const customs = (data.bgm || []).filter(b => b.custom);
+    if (customs.length === 0) {
+      customBgmList.textContent = '尚無自訂 BGM';
+      customBgmList.style.color = 'var(--text-muted)';
+      customBgmList.style.fontSize = '11px';
+      return;
+    }
+    // Also add custom BGMs to the select dropdown
+    for (const b of customs) {
+      // Add to list UI
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:4px;background:rgba(28,30,42,0.4);';
+      const nameEl = document.createElement('span');
+      nameEl.style.cssText = 'flex:1;font-size:11px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      nameEl.textContent = b.filename;
+      row.appendChild(nameEl);
+      const playBtnEl = document.createElement('button');
+      playBtnEl.textContent = '▶';
+      playBtnEl.style.cssText = 'padding:2px 6px;background:var(--accent-muted);color:var(--accent);border:1px solid var(--glass-border);border-radius:4px;cursor:pointer;font-size:11px;';
+      playBtnEl.onclick = () => { bgmSelectEl.value = b.url; bgmManualUrl = b.url; localStorage.setItem('ai-wife-bgm-select', b.url); playBgm(b.url); };
+      row.appendChild(playBtnEl);
+      const delBtnEl = document.createElement('button');
+      delBtnEl.textContent = '刪';
+      delBtnEl.style.cssText = 'padding:2px 6px;background:rgba(255,80,80,0.2);color:#ff6b6b;border:1px solid rgba(255,80,80,0.3);border-radius:4px;cursor:pointer;font-size:10px;';
+      delBtnEl.onclick = async () => {
+        await fetch('/api/bgm/' + encodeURIComponent(b.filename), { method: 'DELETE' });
+        refreshCustomBgmList();
+      };
+      row.appendChild(delBtnEl);
+      customBgmList.appendChild(row);
+      // Add to select if not already there
+      if (!bgmSelectEl.querySelector('option[value="' + CSS.escape(b.url) + '"]')) {
+        const opt = document.createElement('option');
+        opt.value = b.url;
+        opt.textContent = '★ ' + b.filename;
+        bgmSelectEl.appendChild(opt);
+      }
+    }
+  } catch (e) { console.warn('Failed to load custom BGM list:', e); }
+}
+
+bgmUploadBtn.onclick = () => bgmUploadInput.click();
+bgmUploadInput.onchange = async () => {
+  const file = bgmUploadInput.files[0];
+  if (!file) return;
+  bgmUploadStatusEl.textContent = '上傳中...';
+  bgmUploadBtn.disabled = true;
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/bgm/upload', { method: 'POST', body: form });
+    if (!res.ok) { const err = await res.json(); throw new Error(err.detail); }
+    const data = await res.json();
+    bgmUploadStatusEl.textContent = '上傳成功：' + data.filename;
+    refreshCustomBgmList();
+  } catch (e) {
+    bgmUploadStatusEl.textContent = '上傳失敗：' + e.message;
+  }
+  bgmUploadBtn.disabled = false;
+  bgmUploadInput.value = '';
+};
+
+// Load custom list when music tab is shown
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.tab === 'tab-music') refreshCustomBgmList();
   });
 });
 

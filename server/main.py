@@ -421,10 +421,13 @@ async def update_soul(data: dict):
 
 
 @app.post("/api/stt")
-async def api_stt(audio: UploadFile = File(...)):
+async def api_stt(audio: UploadFile = File(...), language: str = Form("zh")):
     audio_data = await audio.read()
-    text = await stt_engine.transcribe(audio_data)
-    return {"text": text}
+    text = await stt_engine.transcribe(audio_data, language=language)
+    result = {"text": text}
+    if stt_engine.last_emotion:
+        result["emotion"] = stt_engine.last_emotion
+    return result
 
 
 @app.post("/api/tts")
@@ -811,6 +814,51 @@ async def web_index():
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/audio-assets", StaticFiles(directory="../assets/audio_extracted"), name="audio-assets")
+
+# User BGM upload directory
+_user_bgm_dir = Path("../assets/audio_extracted/bgm/custom")
+_user_bgm_dir.mkdir(parents=True, exist_ok=True)
+
+
+@app.post("/api/bgm/upload")
+async def upload_bgm(file: UploadFile = File(...)):
+    allowed = {".wav", ".mp3", ".ogg", ".flac", ".m4a"}
+    ext = Path(file.filename).suffix.lower()
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {ext}")
+    data = await file.read()
+    if len(data) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds 50MB limit")
+    safe_name = "".join(c for c in Path(file.filename).stem if c.isalnum() or c in "_- ").strip()[:40] or "bgm"
+    out_name = f"{safe_name}{ext}"
+    out_path = _user_bgm_dir / out_name
+    out_path.write_bytes(data)
+    return {"filename": out_name, "url": f"/audio-assets/bgm/custom/{out_name}"}
+
+
+@app.get("/api/bgm/list")
+async def list_bgm():
+    result = []
+    bgm_dir = Path("../assets/audio_extracted/bgm")
+    for f in sorted(bgm_dir.glob("*")):
+        if f.is_file() and f.suffix.lower() in {".wav", ".mp3", ".ogg", ".flac", ".m4a"}:
+            result.append({"filename": f.name, "url": f"/audio-assets/bgm/{f.name}", "custom": False})
+    custom_dir = bgm_dir / "custom"
+    if custom_dir.exists():
+        for f in sorted(custom_dir.glob("*")):
+            if f.is_file() and f.suffix.lower() in {".wav", ".mp3", ".ogg", ".flac", ".m4a"}:
+                result.append({"filename": f.name, "url": f"/audio-assets/bgm/custom/{f.name}", "custom": True})
+    return {"bgm": result}
+
+
+@app.delete("/api/bgm/{filename}")
+async def delete_bgm(filename: str):
+    path = _user_bgm_dir / Path(filename).name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="BGM not found")
+    path.unlink()
+    return {"success": True}
 
 
 # --- Health ---

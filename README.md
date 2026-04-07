@@ -1,29 +1,44 @@
 # AI Wife App 🌸
 
-你的 AI 老婆 — 一個擁有個性、聲音和真實技能的 AI 伴侶。
-配備 3D 動漫角色、日語語音合成、沉浸式音效場景，以及日常生活助手功能。
+你的 AI 老婆 — 一個能自我進化、擁有個性和聲音的 AI 伴侶。
+配備 3D 動漫角色、日語語音合成、沉浸式音效場景、自我學習系統，以及日常生活助手功能。
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Version](https://img.shields.io/badge/version-0.2.0-green.svg)
 
 ---
 
 ## 功能亮點
 
+### 🧠 自我進化系統 (v0.2.0)
+- **Markdown 技能系統** — AI 自己創建行為技能（SKILL.md），隨互動逐步成長
+- **程式碼執行** — AI 能撰寫並執行 Python 腳本（AST 安全檢查 + 沙盒）
+- **人格自我更新** — 每日反思對話內容，自動微調性格和記憶
+- **使用者畫像** — 主動記錄你的偏好、習慣，越用越了解你
+
 ### 🎙️ 語音系統
 - **日語語音合成** — 基於 Qwen3-TTS 的聲音克隆，支援 7 種情感（開心、悲傷、撒嬌、親密等）
+- **SenseVoice 語音辨識** — 阿里開源 STT，中文精度遠超 Whisper，附帶情緒偵測
 - **多角色切換** — 內建多組語音角色，可在設定中一鍵切換或訓練自己的聲音
 - **情感音效處理** — 根據情感自動調整語音效果（混響、溫暖度、壓縮等）
 - **串流/完整播放** — 串流模式邊生成邊播放，完整模式等全部生成後一次播放
 
-### 🔊 音效系統
-- **316 個音效素材** — 環境音、日常生活音、親密音效等，支援語義標籤搜尋
-- **場景混音** — AI 自動編排語音和音效的時間軸，混合成單一音檔，打造沉浸式體驗
-- **AI 自動配音** — AI 會根據對話場景主動選擇合適的背景音效
+### 🔊 音效與音樂系統
+- **SFX 語義搜尋** — 支援自帶音效庫，AI 根據場景自動選擇音效
+- **BGM 系統** — 場景連動背景音樂，支援自訂上傳 BGM
+- **環境音** — 每個場景可配獨立環境音循環
+- **情緒 BGM 切換** — AI 回覆悲傷/開心/浪漫時自動切換對應曲目
+- **場景混音** — AI 自動編排語音和音效的時間軸
 
 ### 🌸 3D 角色
 - **全螢幕 VRM 角色** — 卡通渲染風格，聊天視窗覆蓋在角色上方
+- **滑鼠頭部追蹤** — 角色的頭和眼睛跟隨你的游標
+- **點擊互動** — 點擊角色不同部位觸發不同反應 + 愛心/星星粒子
+- **12 種動畫** — Idle、揮手、思考、開心、悲傷、生氣、驚訝、害羞、大笑、點頭、飛吻
+- **表情漸變** — 平滑過渡而非突然切換
+- **VRM 模型管理** — 上傳/切換/刪除角色模型
+- **PMX 轉 VRM** — Blender 自動轉換（骨骼映射 + 表情設定）
 - **4 種場景** — 居家、櫻花、奇幻、夜景，各有獨立光照設定
-- **渲染調整** — 16+ 個可調參數（燈光、後處理、材質），可儲存自訂模式
 
 ### 💬 智能對話
 - **多家 AI 供應商** — 支援 DashScope、OpenRouter、OpenAI、Ollama，自動切換
@@ -35,6 +50,7 @@
 - **行事曆** — 查看、新增、修改 Google Calendar 事件
 - **網路搜尋** — SearXNG + Brave Search，支援圖片和影片搜尋
 - **檔案管理** — 讀取、寫入、瀏覽電腦中的檔案
+- **程式碼執行** — AI 撰寫並運行 Python 腳本解決問題
 
 ---
 
@@ -233,7 +249,8 @@ cd ~/voicebox && source backend/venv/bin/activate && python -m backend.main --po
 - [Three.js](https://threejs.org/) + [@pixiv/three-vrm](https://github.com/pixiv/three-vrm) — 3D VRM 角色渲染
 - [FastAPI](https://fastapi.tiangolo.com/) — Python 後端框架
 - [SearXNG](https://github.com/searxng/searxng) — 開源搜尋引擎
-- [OpenAI Whisper](https://github.com/openai/whisper) — 語音轉文字
+- [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) — 語音辨識 + 情緒偵測
+- [FunASR](https://github.com/modelscope-audio/FunASR) — 語音辨識框架
 
 ---
 

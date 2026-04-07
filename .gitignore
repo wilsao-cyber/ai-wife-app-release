@@ -60,3 +60,18 @@ Thumbs.db
 /output/**/*.vrm
 /output/**/*.obj
 *.egg-info/.superpowers/
+
+# Local assets (audio, models, etc.)
+assets/audio_extracted/
+server/static/models/lipusi.*
+server/static/animations/idle_look.fbx
+server/static/models/*.glb
+scripts/ai_generated/
+voicebox_training/
+logs/
+
+# Agent/tool configs
+.agent/
+.opencode/
+.superpowers/
+.mcp.json

@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 import os
 SFX_ROOT = Path(os.getenv("SFX_ROOT", os.path.join(os.path.dirname(__file__), "..", "sfx_library")))
+EXTRACTED_ROOT = Path(os.path.join(os.path.dirname(__file__), "..", "assets", "audio_extracted"))
 AUDIO_EXTS = {".wav", ".mp3", ".ogg", ".flac", ".m4a"}
 
 
@@ -65,12 +66,22 @@ class SfxCatalog:
         self.by_category: dict[str, list[SfxEntry]] = {}
 
     def build(self, root: Path = SFX_ROOT) -> None:
-        """Walk directory tree, build catalog."""
+        """Walk directory tree, build catalog from all sources."""
         self.entries.clear()
         self.by_category.clear()
 
+        # Scan primary SFX library
+        self._scan_dir(root)
+        # Scan extracted Koikatsu audio
+        if EXTRACTED_ROOT.exists():
+            self._scan_dir(EXTRACTED_ROOT)
+
+        logger.info(f"SFX catalog built: {len(self.entries)} entries, {len(self.by_category)} categories")
+
+    def _scan_dir(self, root: Path) -> None:
+        """Scan a single directory tree and add entries."""
         if not root.exists():
-            logger.warning(f"SFX root not found: {root}")
+            logger.warning(f"SFX dir not found: {root}")
             return
 
         for audio_file in root.rglob("*"):
@@ -113,8 +124,6 @@ class SfxCatalog:
 
             self.entries[entry_id] = entry
             self.by_category.setdefault(category, []).append(entry)
-
-        logger.info(f"SFX catalog built: {len(self.entries)} entries, {len(self.by_category)} categories")
 
     def search_by_tag(self, tag: str, limit: int = 3) -> list[SfxEntry]:
         """Search by semantic tag from sfx_tags.py. Most accurate method."""
