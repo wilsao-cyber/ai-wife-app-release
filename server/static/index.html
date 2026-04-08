@@ -124,7 +124,10 @@
     pointer-events: none; /* Let touches pass through empty space */
   }
   #messages .msg {
-    pointer-events: auto; /* Only message bubbles receive touches */
+    pointer-events: auto; /* Message bubbles receive touches */
+  }
+  #input-bar, #scroll-bottom-btn, .top-bar {
+    pointer-events: auto; /* Input bar and buttons always clickable */
   }
   #messages::-webkit-scrollbar { width: 4px; }
   #messages::-webkit-scrollbar-track { background: transparent; }
