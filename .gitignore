@@ -64,3 +64,16 @@ logs/
 .opencode/
 .superpowers/
 .mcp.json
+
+# Dev-only / private files
+CLAUDE.md
+config/server_config.yaml
+!config/server_config.example.yaml
+server/Modelfile
+server/bench_*.py
+server/test_calendar.py
+server/test_email.py
+server/skills/builtin/_*.disabled
+docs/superpowers/
+sfx_library
+網頁測試通過.txt
