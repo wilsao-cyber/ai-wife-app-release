@@ -6,6 +6,8 @@ import time
 from typing import Optional
 from soul.soul_manager import SoulManager
 from memory.memory_store import MemoryStore
+from memory.wake_up import WakeUpManager
+from memory.knowledge_graph import KnowledgeGraph
 from skills.registry import SkillRegistry
 
 logger = logging.getLogger(__name__)
@@ -78,12 +80,16 @@ class AgentOrchestrator:
         skill_registry: SkillRegistry,
         soul_manager: SoulManager,
         memory_store: MemoryStore,
+        wake_up_manager: Optional[WakeUpManager] = None,
+        knowledge_graph: Optional[KnowledgeGraph] = None,
     ):
         self.llm = llm_client
         self.config = config
         self.skills = skill_registry
         self.soul = soul_manager
         self.memory = memory_store
+        self.wake_up = wake_up_manager
+        self.kg = knowledge_graph
         self.conversation_history: dict[str, list] = {}
         self.pending_plans: dict[str, dict] = {}
         self.max_history = 20
@@ -416,9 +422,20 @@ class AgentOrchestrator:
         else:
             system_prompt = self.soul.get_chat_prompt(language)
 
+        # Inject L0/L1 wake-up context (always present)
+        if self.wake_up and self.wake_up.has_context:
+            wake_ctx = self.wake_up.get_context()
+            system_prompt += f"\n\n## About Your Husband\n{wake_ctx}"
+
         if memories:
             memory_text = "\n".join([f"- {m['content']}" for m in memories])
             system_prompt += f"\n\n## Relevant Memories\n{memory_text}"
+
+        # Inject contradiction hints if any
+        if self.kg:
+            contradiction_hint = self.kg.get_contradiction_prompt()
+            if contradiction_hint:
+                system_prompt += f"\n\n## 注意到的變化\n{contradiction_hint}"
 
         # Inject learned skills
         try:
@@ -540,6 +557,12 @@ class AgentOrchestrator:
     ) -> list[dict]:
         memories = await self.memory.search(message, limit=3)
         system_prompt = self.soul.get_assist_prompt(language)
+
+        # Inject L0/L1 wake-up context (always present)
+        if self.wake_up and self.wake_up.has_context:
+            wake_ctx = self.wake_up.get_context()
+            system_prompt += f"\n\n## About Your Husband\n{wake_ctx}"
+
         if memories:
             memory_text = "\n".join([f"- {m['content']}" for m in memories])
             system_prompt += f"\n\n## Relevant Memories\n{memory_text}"
@@ -720,10 +743,18 @@ class AgentOrchestrator:
             ]
 
     async def _learn_from_turn(self, user_msg: str, assistant_msg: str):
-        """Background: extract memories from conversation turn."""
+        """Background: extract memories and KG facts from conversation turn."""
         try:
             await self.memory.extract_from_conversation(
                 user_msg, assistant_msg, self.llm
             )
+            # Extract KG triples (runs in parallel conceptually, but sequential for LLM)
+            if self.kg:
+                await self.kg.extract_from_conversation(
+                    user_msg, assistant_msg, self.llm
+                )
+            # Auto-build L0 if wake-up context is empty (bootstrapping)
+            if self.wake_up and not self.wake_up.has_context:
+                await self.wake_up.build_l0_from_memories(self.memory, self.llm)
         except Exception as e:
             logger.warning(f"Memory extraction failed: {e}")

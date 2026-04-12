@@ -359,7 +359,11 @@ export function initSettings(ctx) {
       const resp = await fetch('/api/tts/status');
       const data = await resp.json();
       if (data.status === 'running') {
-        el.textContent = `狀態: ✅ 運行中 (${data.profiles} 個語音角色)`;
+        if (data.provider === 'qwen3tts') {
+          el.textContent = `狀態: ✅ Qwen3-TTS 運行中 (${data.mode}: ${data.speaker})`;
+        } else {
+          el.textContent = `狀態: ✅ 運行中 (${data.profiles} 個語音角色)`;
+        }
         el.style.color = '#4caf50';
       } else {
         el.textContent = '狀態: ❌ 已停止';
@@ -1167,6 +1171,34 @@ export function initSettings(ctx) {
   buildRenderUI();
   setTimeout(applyRenderSettings, 1000);
 
+  // ── Background Screen Controls ──────────────────────────────────────
+  document.getElementById('screen-toggle-btn').onclick = () => {
+    if (window._bgScreen) { window._bgScreen.toggle(); showToast(window._bgScreen.mesh.visible ? '螢幕已開啟' : '螢幕已關閉'); }
+  };
+  document.getElementById('screen-clear-btn').onclick = () => {
+    if (window._bgScreen) { window._bgScreen.clear(); showToast('螢幕已清除'); }
+  };
+  const screenOpacity = document.getElementById('screen-opacity');
+  const screenOpacityVal = document.getElementById('screen-opacity-val');
+  screenOpacity.oninput = () => {
+    const v = parseInt(screenOpacity.value);
+    screenOpacityVal.textContent = v + '%';
+    if (window._bgScreen) window._bgScreen.setOpacity(v / 100);
+  };
+  document.getElementById('screen-upload').onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.type.startsWith('video/')) {
+      const url = URL.createObjectURL(file);
+      if (window._bgScreen) window._bgScreen.showVideo(url);
+      showToast('影片已載入');
+    } else {
+      const img = new Image();
+      img.onload = () => { if (window._bgScreen) window._bgScreen.drawImage(img); showToast('圖片已載入'); };
+      img.src = URL.createObjectURL(file);
+    }
+  };
+
   // ── Emotion & Expression Test Buttons ─────────────────────────────────
   const emotionTestSection = document.createElement('div');
   emotionTestSection.style.cssText = 'margin-top:16px;padding-top:12px;border-top:1px solid #333;';
@@ -1240,7 +1272,123 @@ export function initSettings(ctx) {
   }
   emotionTestSection.appendChild(mouthRow);
 
-  document.getElementById('tab-render').appendChild(emotionTestSection);
+  document.getElementById('tab-voice').appendChild(emotionTestSection);
+
+  // ── Emotion Prompt Editor ──────────────────────────────────────────────
+  const promptSection = document.createElement('div');
+  promptSection.style.cssText = 'margin-top:16px;padding-top:12px;border-top:1px solid #333;';
+  const promptTitle = document.createElement('div');
+  promptTitle.style.cssText = 'color:#FF69B4;font-size:13px;font-weight:bold;margin-bottom:8px;cursor:pointer;';
+  promptTitle.textContent = '🎙️ 語音情緒提示詞 ▸';
+  let promptExpanded = false;
+  const promptBody = document.createElement('div');
+  promptBody.style.display = 'none';
+
+  promptTitle.onclick = () => {
+    promptExpanded = !promptExpanded;
+    promptBody.style.display = promptExpanded ? 'block' : 'none';
+    promptTitle.textContent = promptExpanded ? '🎙️ 語音情緒提示詞 ▾' : '🎙️ 語音情緒提示詞 ▸';
+    if (promptExpanded) loadEmotionPrompts();
+  };
+
+  async function loadEmotionPrompts() {
+    promptBody.innerHTML = '<div style="color:#888;font-size:12px;">載入中...</div>';
+    try {
+      const res = await fetch('/api/tts/emotion-prompts');
+      const data = await res.json();
+      promptBody.innerHTML = '';
+
+      for (const [lang, info] of Object.entries(data)) {
+        const langDiv = document.createElement('div');
+        langDiv.style.cssText = 'margin-bottom:12px;';
+        const langLabel = document.createElement('div');
+        langLabel.style.cssText = 'color:#aaa;font-size:12px;font-weight:bold;margin-bottom:6px;';
+        langLabel.textContent = lang === 'Japanese' ? '🇯🇵 日語' : '🇨🇳 中文';
+        langDiv.appendChild(langLabel);
+
+        // Base style display
+        const baseRow = document.createElement('div');
+        baseRow.style.cssText = 'margin-bottom:6px;';
+        const baseLabel = document.createElement('span');
+        baseLabel.style.cssText = 'color:#888;font-size:11px;';
+        baseLabel.textContent = '基礎風格: ' + info.base;
+        baseRow.appendChild(baseLabel);
+        langDiv.appendChild(baseRow);
+
+        for (const [emo, emoInfo] of Object.entries(info.emotions)) {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;';
+
+          const label = document.createElement('span');
+          label.style.cssText = 'color:#ccc;font-size:11px;min-width:50px;';
+          label.textContent = emo;
+
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = emoInfo.full;
+          input.style.cssText = 'flex:1;padding:4px 8px;border:1px solid #444;border-radius:4px;background:rgba(20,20,40,0.8);color:#eee;font-size:11px;';
+          if (emoInfo.is_custom) input.style.borderColor = '#FF69B4';
+
+          const saveBtn = document.createElement('button');
+          saveBtn.textContent = '💾';
+          saveBtn.title = '儲存';
+          saveBtn.style.cssText = 'padding:4px 8px;border:1px solid #555;border-radius:4px;background:rgba(30,30,50,0.8);color:#eee;cursor:pointer;font-size:11px;';
+          saveBtn.onclick = async () => {
+            const r = await fetch('/api/tts/emotion-prompts', {
+              method: 'POST', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ language: lang, emotion: emo, prompt: input.value }),
+            });
+            const d = await r.json();
+            if (d.ok) { input.style.borderColor = '#FF69B4'; showToast('已儲存 ' + emo); }
+          };
+
+          const resetBtn = document.createElement('button');
+          resetBtn.textContent = '↩';
+          resetBtn.title = '重置預設';
+          resetBtn.style.cssText = 'padding:4px 8px;border:1px solid #555;border-radius:4px;background:rgba(30,30,50,0.8);color:#eee;cursor:pointer;font-size:11px;';
+          resetBtn.onclick = async () => {
+            const r = await fetch('/api/tts/emotion-prompts', {
+              method: 'POST', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ language: lang, emotion: emo, reset: true }),
+            });
+            const d = await r.json();
+            if (d.ok) { input.value = d.prompt; input.style.borderColor = '#444'; showToast('已重置 ' + emo); }
+          };
+
+          const testBtn = document.createElement('button');
+          testBtn.textContent = '▶';
+          testBtn.title = '試聽';
+          testBtn.style.cssText = 'padding:4px 8px;border:1px solid #555;border-radius:4px;background:rgba(30,30,50,0.8);color:#eee;cursor:pointer;font-size:11px;';
+          testBtn.onclick = async () => {
+            testBtn.textContent = '⏳';
+            try {
+              const testText = lang === 'Japanese' ? 'こんにちは、今日はどうだった？' : '你好，今天過得怎麼樣？';
+              const r = await fetch('/api/tts', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ text: testText, emotion: emo }),
+              });
+              const d = await r.json();
+              const audioUrl = d.audio_url || d.url;
+              if (audioUrl) { const a = new Audio(audioUrl); a.play(); }
+            } catch (e) { showToast('試聽失敗: ' + e.message); }
+            testBtn.textContent = '▶';
+          };
+
+          row.appendChild(label);
+          row.appendChild(input);
+          row.appendChild(saveBtn);
+          row.appendChild(resetBtn);
+          row.appendChild(testBtn);
+          langDiv.appendChild(row);
+        }
+        promptBody.appendChild(langDiv);
+      }
+    } catch (e) { promptBody.innerHTML = '<div style="color:#f66;">載入失敗</div>'; }
+  }
+
+  promptSection.appendChild(promptTitle);
+  promptSection.appendChild(promptBody);
+  document.getElementById('tab-voice').appendChild(promptSection);
 
   // ── VRM Character Tab ─────────────────────────────────────────────────
   let currentVrmUrl = savedVrmPath || './static/models/character.vrm';

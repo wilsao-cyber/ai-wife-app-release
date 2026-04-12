@@ -34,6 +34,8 @@ from vrm_manager import VrmManager
 from vision_analyzer import VisionAnalyzer
 from soul.soul_manager import SoulManager
 from memory.memory_store import MemoryStore
+from memory.wake_up import WakeUpManager
+from memory.knowledge_graph import KnowledgeGraph
 from skills.registry import SkillRegistry
 from heartbeat.scheduler import HeartbeatScheduler
 
@@ -251,6 +253,29 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         progress.fail(str(e))
 
+    # Phase 5b: Wake-up Context (L0/L1)
+    progress.begin("Wake-up Context")
+    memory_dir = str(Path(config.memory.db_path).parent)
+    wake_up_manager = WakeUpManager(memory_dir=memory_dir)
+    try:
+        await wake_up_manager.initialize()
+        if wake_up_manager.has_context:
+            progress.ok(f"L0+L1 loaded ({len(wake_up_manager.get_context())} chars)")
+        else:
+            progress.ok("no context yet (will build after conversations)")
+    except Exception as e:
+        progress.fail(str(e))
+
+    # Phase 5c: Knowledge Graph
+    progress.begin("Knowledge Graph")
+    knowledge_graph = KnowledgeGraph(db_path=config.memory.db_path)
+    try:
+        await knowledge_graph.initialize()
+        fact_count = await knowledge_graph.count()
+        progress.ok(f"{fact_count} active facts")
+    except Exception as e:
+        progress.fail(str(e))
+
     # Phase 6: SFX Catalog
     progress.begin("SFX Catalog")
     try:
@@ -279,6 +304,8 @@ async def lifespan(app: FastAPI):
         skill_registry=skill_registry,
         soul_manager=soul_manager,
         memory_store=memory_store,
+        wake_up_manager=wake_up_manager,
+        knowledge_graph=knowledge_graph,
     )
     progress.ok("wired")
 
@@ -589,9 +616,39 @@ async def tts_stream(data: dict):
 
 @app.get("/api/voice/profiles")
 async def voice_profiles():
-    """List all Voicebox profiles with active status."""
-    import httpx
+    """List voice profiles. Works with both Voicebox and Qwen3-TTS providers."""
 
+    if config.tts.provider == "qwen3tts":
+        mode = getattr(config.tts, "qwen3tts_mode", "custom_voice")
+        active_speaker = getattr(config.tts, "qwen3tts_speaker", "Ono_Anna")
+
+        # Preset speakers (CustomVoice mode)
+        from tts_engine import TTSEngine
+        preset_speakers = [
+            {"id": name, "name": name, "type": "preset",
+             "language": info["language"], "description": info["description"],
+             "gender": info["gender"], "active": name == active_speaker}
+            for name, info in TTSEngine.PRESET_SPEAKERS.items()
+        ]
+
+        # Emotion ref audios (VoiceClone mode)
+        emotion_refs = config.tts.qwen3tts_emotion_refs or {}
+        emotion_profiles = [
+            {"id": emotion, "name": f"Clone: {emotion}", "type": "emotion_ref",
+             "audio_path": path, "has_audio": os.path.exists(path)}
+            for emotion, path in emotion_refs.items()
+        ]
+
+        return {
+            "profiles": preset_speakers + emotion_profiles,
+            "provider": "qwen3tts",
+            "mode": mode,
+            "active_speaker": active_speaker,
+            "active_emotions": list(emotion_refs.keys()),
+        }
+
+    # Voicebox provider
+    import httpx
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(f"{config.tts.voicebox_api_url}/profiles")
@@ -602,6 +659,7 @@ async def voice_profiles():
 
     return {
         "profiles": profiles,
+        "provider": "voicebox",
         "active_normal": config.tts.voicebox_profile_id,
         "active_horny": config.tts.voicebox_horny_profile_id,
     }
@@ -609,7 +667,32 @@ async def voice_profiles():
 
 @app.post("/api/voice/switch")
 async def voice_switch(data: dict):
-    """Switch active voice profile."""
+    """Switch active voice profile or speaker."""
+
+    if config.tts.provider == "qwen3tts":
+        # Switch speaker (CustomVoice) or mode
+        speaker = data.get("speaker", data.get("profile_id", ""))
+        qwen_mode = data.get("qwen3tts_mode", "")
+
+        if qwen_mode:
+            config.tts.qwen3tts_mode = qwen_mode
+            # Reinitialize TTS if mode changed
+            if tts_engine._qwen3tts_mode != qwen_mode:
+                asyncio.create_task(tts_engine.initialize())
+
+        if speaker:
+            config.tts.qwen3tts_speaker = speaker
+            # Update the internal mode-aware language
+            logger.info(f"Switched to speaker: {speaker}")
+
+        save_config(config)
+        return {
+            "ok": True,
+            "speaker": config.tts.qwen3tts_speaker,
+            "mode": config.tts.qwen3tts_mode,
+        }
+
+    # Voicebox
     profile_id = data.get("profile_id", "")
     mode = data.get("mode", "normal")
     if mode == "normal":
@@ -644,18 +727,58 @@ async def voice_create(data: dict):
 async def voice_upload_sample(
     profile_id: str = "",
     reference_text: str = "",
+    emotion: str = "",
     file: UploadFile = File(...),
 ):
-    """Upload audio sample to a Voicebox profile."""
-    import httpx
+    """Upload audio sample. For Qwen3-TTS: emotion ref audio. For Voicebox: profile sample."""
     import tempfile
-    from pathlib import Path
+    from pathlib import Path as _Path
+
+    content = await file.read()
+    ext = _Path(file.filename or "audio.wav").suffix or ".wav"
+
+    if config.tts.provider == "qwen3tts":
+        # Save as emotion reference audio and rebuild voice_clone_prompt
+        if not emotion:
+            emotion = profile_id or "neutral"  # fallback to profile_id for compat
+        if not reference_text:
+            return {"error": "reference_text required for voice clone prompt"}
+
+        # Save to voice_samples directory
+        samples_dir = _Path(config.tts.voice_sample_path)
+        samples_dir.mkdir(parents=True, exist_ok=True)
+        out_path = samples_dir / f"{emotion}{ext}"
+        out_path.write_bytes(content)
+
+        # Update config
+        if not config.tts.qwen3tts_emotion_refs:
+            config.tts.qwen3tts_emotion_refs = {}
+        config.tts.qwen3tts_emotion_refs[emotion] = str(out_path)
+        if not config.tts.qwen3tts_ref_texts:
+            config.tts.qwen3tts_ref_texts = {}
+        config.tts.qwen3tts_ref_texts[emotion] = reference_text
+
+        # Rebuild voice_clone_prompt for this emotion
+        if tts_engine._model and hasattr(tts_engine, '_emotion_prompts'):
+            try:
+                x_vec = config.tts.qwen3tts_x_vector_only
+                prompt = tts_engine._model.create_voice_clone_prompt(
+                    ref_audio=str(out_path),
+                    ref_text=reference_text if not x_vec else "",
+                    x_vector_only_mode=x_vec,
+                )
+                tts_engine._emotion_prompts[emotion] = prompt
+            except Exception as e:
+                return {"error": f"Failed to rebuild voice prompt: {e}"}
+
+        save_config(config)
+        return {"ok": True, "emotion": emotion, "path": str(out_path)}
+
+    # Voicebox provider
+    import httpx
 
     if not profile_id or not reference_text:
         return {"error": "profile_id and reference_text required"}
-
-    content = await file.read()
-    ext = Path(file.filename or "audio.wav").suffix or ".wav"
 
     try:
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
@@ -674,7 +797,7 @@ async def voice_upload_sample(
     except Exception as e:
         return {"error": str(e)}
     finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        _Path(tmp_path).unlink(missing_ok=True)
 
 
 @app.delete("/api/voice/profile/{profile_id}")
@@ -740,12 +863,96 @@ async def voice_test(data: dict):
     return {"error": "Audio file not found"}
 
 
+# --- Image Proxy (for background screen CORS) ---
+
+
+@app.get("/api/proxy/image")
+async def proxy_image(url: str = ""):
+    """Proxy external images to avoid CORS issues for background screen canvas."""
+    from fastapi.responses import Response
+    from urllib.parse import urlparse
+    import ipaddress
+
+    if not url:
+        return Response(content=b'', status_code=400)
+
+    # SSRF protection: only allow http/https, block private IPs
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return Response(content=b'', status_code=403)
+    hostname = parsed.hostname or ""
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+            return Response(content=b'', status_code=403)
+    except ValueError:
+        # Not an IP — check for localhost variants
+        if hostname.lower() in ("localhost", "0.0.0.0", "127.0.0.1", "::1"):
+            return Response(content=b'', status_code=403)
+
+    # Only allow image content types
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True, max_redirects=3) as client:
+            resp = await client.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "image/*,*/*",
+            })
+            resp.raise_for_status()
+            content_type = resp.headers.get("content-type", "")
+            if not content_type.startswith("image/"):
+                return Response(content=b'', status_code=403)
+            # Limit response size to 10MB
+            if len(resp.content) > 10 * 1024 * 1024:
+                return Response(content=b'', status_code=413)
+            return Response(content=resp.content, media_type=content_type)
+    except Exception as e:
+        logger.warning(f"Image proxy failed for {url[:80]}: {e}")
+        return Response(content=b'', status_code=502)
+
+
+# --- TTS Emotion Prompts ---
+
+
+@app.get("/api/tts/emotion-prompts")
+async def get_emotion_prompts():
+    """Return all current emotion instruct prompts (default + custom overrides)."""
+    return tts_engine.get_all_prompts()
+
+
+@app.post("/api/tts/emotion-prompts")
+async def set_emotion_prompts(data: dict):
+    """Update emotion instruct prompts. Body: {language, emotion, prompt} or {language, emotion, reset: true}"""
+    language = data.get("language", "Japanese")
+    emotion = data.get("emotion", "")
+    if not emotion:
+        return {"error": "emotion is required"}
+
+    if data.get("reset"):
+        tts_engine.clear_custom_prompt(language, emotion)
+        return {"ok": True, "action": "reset", "prompt": tts_engine.get_instruct(emotion, language)}
+    else:
+        prompt = data.get("prompt", "")
+        if not prompt:
+            return {"error": "prompt is required"}
+        tts_engine.set_custom_prompt(language, emotion, prompt)
+        return {"ok": True, "action": "set", "prompt": prompt}
+
+
 # --- TTS Service Management ---
 
 
 @app.get("/api/tts/status")
 async def tts_status():
-    """Check Voicebox TTS service status."""
+    """Check TTS service status (provider-aware)."""
+    if config.tts.provider == "qwen3tts":
+        if tts_engine._model is not None:
+            speaker = getattr(config.tts, "qwen3tts_speaker", "?")
+            mode = getattr(config.tts, "qwen3tts_mode", "?")
+            return {"status": "running", "provider": "qwen3tts", "mode": mode, "speaker": speaker}
+        return {"status": "stopped", "provider": "qwen3tts"}
+
+    # Voicebox
     import httpx
     try:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -760,6 +967,8 @@ async def tts_status():
 @app.post("/api/tts/kill")
 async def tts_kill():
     """Force kill Voicebox TTS process."""
+    if config.tts.provider != "voicebox":
+        return {"ok": False, "error": f"Not using voicebox (current: {config.tts.provider})"}
     try:
         _kill_voicebox()
         logger.info("Voicebox TTS killed")
@@ -771,6 +980,8 @@ async def tts_kill():
 @app.post("/api/tts/restart")
 async def tts_restart():
     """Restart Voicebox TTS service."""
+    if config.tts.provider != "voicebox":
+        return {"ok": False, "error": f"Not using voicebox (current: {config.tts.provider})"}
     # Kill existing
     _kill_voicebox()
     await asyncio.sleep(1)
@@ -843,14 +1054,40 @@ async def list_sfx(category: str = "", q: str = ""):
     return {"results": [{"id": e.id, "description": e.description, "category": e.category} for e in results]}
 
 
+def _safe_filename(filename: str) -> str:
+    """Sanitize filename to prevent path traversal."""
+    from pathlib import PurePosixPath
+    # Strip any directory components, keep only the basename
+    name = PurePosixPath(filename).name
+    # Remove any remaining path separators or null bytes
+    name = name.replace('\\', '').replace('/', '').replace('\x00', '')
+    if not name or name.startswith('.'):
+        raise ValueError("Invalid filename")
+    return name
+
+
 @app.get("/audio/{filename}")
 async def get_audio(filename: str):
-    return FileResponse(f"./output/audio/{filename}")
+    try:
+        safe = _safe_filename(filename)
+    except ValueError:
+        return {"error": "invalid filename"}
+    path = Path("./output/audio") / safe
+    if not path.exists():
+        return {"error": "not found"}
+    return FileResponse(str(path))
 
 
 @app.get("/models/{filename}")
 async def get_model(filename: str):
-    return FileResponse(f"./output/models/{filename}")
+    try:
+        safe = _safe_filename(filename)
+    except ValueError:
+        return {"error": "invalid filename"}
+    path = Path("./output/models") / safe
+    if not path.exists():
+        return {"error": "not found"}
+    return FileResponse(str(path))
 
 
 # --- Static / Web UI ---
@@ -999,16 +1236,19 @@ async def health_test():
         results["llm"] = {"ok": False, "error": str(e)[:100]}
 
     # Test TTS (just check connectivity, don't do full synthesis)
-    try:
-        import httpx as _hx
-        async with _hx.AsyncClient(timeout=5.0) as _tc:
-            _tr = await _tc.get(f"{config.tts.voicebox_api_url}/profiles")
-            if _tr.status_code == 200:
-                results["tts"] = {"ok": True, "provider": config.tts.provider}
-            else:
-                results["tts"] = {"ok": False, "error": f"Voicebox returned {_tr.status_code}"}
-    except Exception as e:
-        results["tts"] = {"ok": False, "error": str(e)[:100]}
+    if config.tts.provider == "qwen3tts":
+        results["tts"] = {"ok": tts_engine._model is not None, "provider": "qwen3tts"}
+    else:
+        try:
+            import httpx as _hx
+            async with _hx.AsyncClient(timeout=5.0) as _tc:
+                _tr = await _tc.get(f"{config.tts.voicebox_api_url}/profiles")
+                if _tr.status_code == 200:
+                    results["tts"] = {"ok": True, "provider": config.tts.provider}
+                else:
+                    results["tts"] = {"ok": False, "error": f"Voicebox returned {_tr.status_code}"}
+        except Exception as e:
+            results["tts"] = {"ok": False, "error": str(e)[:100]}
 
     # Test STT
     try:
@@ -1354,13 +1594,20 @@ async def save_full_config(data: dict):
             d = data["tts"]
             for k in ("provider", "voicebox_api_url", "voicebox_path",
                        "voicebox_profile_id", "voicebox_horny_profile_id",
-                       "voicebox_model_size"):
+                       "voicebox_model_size",
+                       "qwen3tts_mode", "qwen3tts_speaker", "qwen3tts_device"):
                 if k in d:
                     setattr(config.tts, k, d[k])
             if "voicebox_concurrency" in d:
                 config.tts.voicebox_concurrency = int(d["voicebox_concurrency"])
             if "audio_fx_enabled" in d:
                 config.tts.audio_fx_enabled = bool(d["audio_fx_enabled"])
+            if "qwen3tts_emotion_refs" in d and isinstance(d["qwen3tts_emotion_refs"], dict):
+                config.tts.qwen3tts_emotion_refs = d["qwen3tts_emotion_refs"]
+            if "qwen3tts_ref_texts" in d and isinstance(d["qwen3tts_ref_texts"], dict):
+                config.tts.qwen3tts_ref_texts = d["qwen3tts_ref_texts"]
+            if "qwen3tts_x_vector_only" in d:
+                config.tts.qwen3tts_x_vector_only = bool(d["qwen3tts_x_vector_only"])
             updated.append("tts")
 
         # --- STT ---
@@ -1609,11 +1856,14 @@ async def docker_status():
 
 @app.get("/api/media/{filename}")
 async def get_media(filename: str):
-    import os
+    try:
+        safe = _safe_filename(filename)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid filename")
     for directory in ["./output/screenshots", "./output/audio", "./output/media"]:
-        path = os.path.join(directory, filename)
-        if os.path.exists(path):
-            return FileResponse(path)
+        path = Path(directory) / safe
+        if path.exists():
+            return FileResponse(str(path))
     raise HTTPException(status_code=404, detail="File not found")
 
 
@@ -1678,13 +1928,16 @@ async def api_health_test():
     else:
         results["llm"] = {"ok": False, "error": "not initialized"}
     # TTS test (connectivity check only, no full synthesis)
-    try:
-        import httpx as _hx2
-        async with _hx2.AsyncClient(timeout=5.0) as _tc2:
-            _tr2 = await _tc2.get(f"{config.tts.voicebox_api_url}/profiles")
-            results["tts"] = {"ok": _tr2.status_code == 200, "provider": config.tts.provider}
-    except Exception as e:
-        results["tts"] = {"ok": False, "error": str(e)[:100]}
+    if config.tts.provider == "qwen3tts":
+        results["tts"] = {"ok": tts_engine._model is not None, "provider": "qwen3tts"}
+    else:
+        try:
+            import httpx as _hx2
+            async with _hx2.AsyncClient(timeout=5.0) as _tc2:
+                _tr2 = await _tc2.get(f"{config.tts.voicebox_api_url}/profiles")
+                results["tts"] = {"ok": _tr2.status_code == 200, "provider": config.tts.provider}
+        except Exception as e:
+            results["tts"] = {"ok": False, "error": str(e)[:100]}
     # STT test
     results["stt"] = {"ok": stt_engine is not None}
     return results

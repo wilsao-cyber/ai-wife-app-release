@@ -32,26 +32,48 @@ class STTEngine:
             raise ValueError(f"Unsupported STT provider: {self.provider}")
 
     async def _init_sensevoice(self):
+        # Ensure ffmpeg is findable — add venv/Scripts to PATH if needed
+        import shutil, sys, os
+        if not shutil.which("ffmpeg"):
+            venv_bin = str(Path(sys.executable).parent)
+            os.environ["PATH"] = venv_bin + os.pathsep + os.environ.get("PATH", "")
+            if shutil.which("ffmpeg"):
+                logger.info(f"Added {venv_bin} to PATH for ffmpeg")
+            else:
+                logger.warning("ffmpeg not found — STT may fail on audio decoding")
+
         try:
             from funasr import AutoModel
+            import os
 
+            # Prefer local cached model to avoid network issues
+            local_model = os.path.expanduser("~/.cache/modelscope/hub/models/iic/SenseVoiceSmall")
+            model_id = local_model if os.path.isdir(local_model) else "iic/SenseVoiceSmall"
+
+            # Use CPU for STT to avoid GPU contention with TTS (nano server uses GPU)
             self._model = AutoModel(
-                model="iic/SenseVoiceSmall",
+                model=model_id,
                 trust_remote_code=True,
-                device="cuda",
+                device="cpu",
+                disable_update=True,
             )
-            logger.info("SenseVoice STT loaded (iic/SenseVoiceSmall, CUDA)")
+            logger.info(f"SenseVoice STT loaded (CPU, model={model_id})")
         except Exception as e:
             logger.warning(f"SenseVoice init failed ({e}), trying CPU...")
             try:
                 from funasr import AutoModel
+                import os
+
+                local_model = os.path.expanduser("~/.cache/modelscope/hub/models/iic/SenseVoiceSmall")
+                model_id = local_model if os.path.isdir(local_model) else "iic/SenseVoiceSmall"
 
                 self._model = AutoModel(
-                    model="iic/SenseVoiceSmall",
+                    model=model_id,
                     trust_remote_code=True,
                     device="cpu",
+                    disable_update=True,
                 )
-                logger.info("SenseVoice STT loaded (CPU fallback)")
+                logger.info(f"SenseVoice STT loaded (CPU, model={model_id})")
             except Exception as e2:
                 logger.error(f"SenseVoice init failed completely: {e2}")
                 self._model = None

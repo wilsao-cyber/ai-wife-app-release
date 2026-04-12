@@ -27,9 +27,20 @@ class MemoryStore:
                     importance REAL DEFAULT 0.5,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_accessed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    access_count INTEGER DEFAULT 0
+                    access_count INTEGER DEFAULT 0,
+                    wing TEXT DEFAULT 'general',
+                    room TEXT DEFAULT 'misc'
                 )
             """)
+            # Migration: add wing/room columns to existing DBs
+            try:
+                await db.execute("ALTER TABLE memories ADD COLUMN wing TEXT DEFAULT 'general'")
+            except Exception:
+                pass  # Column already exists
+            try:
+                await db.execute("ALTER TABLE memories ADD COLUMN room TEXT DEFAULT 'misc'")
+            except Exception:
+                pass  # Column already exists
             await db.commit()
 
         if self.use_embeddings:
@@ -54,21 +65,29 @@ class MemoryStore:
         vec = self._encoder.encode(text, normalize_embeddings=True)
         return vec.astype(np.float32).tobytes()
 
-    async def add(self, content: str, category: str, importance: float = 0.5):
+    async def add(
+        self, content: str, category: str, importance: float = 0.5,
+        wing: str = "general", room: str = "misc",
+    ):
         embedding = self._encode(content)
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "INSERT INTO memories (content, category, embedding, importance) VALUES (?, ?, ?, ?)",
-                (content, category, embedding, importance),
+                "INSERT INTO memories (content, category, embedding, importance, wing, room) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (content, category, embedding, importance, wing, room),
             )
             await db.commit()
 
-    async def search(self, query: str, limit: int = 3) -> list[dict]:
+    async def search(
+        self, query: str, limit: int = 3, wing: Optional[str] = None,
+    ) -> list[dict]:
         if self.use_embeddings and self._encoder is not None:
-            return await self._search_vector(query, limit)
-        return await self._search_keyword(query, limit)
+            return await self._search_vector(query, limit, wing=wing)
+        return await self._search_keyword(query, limit, wing=wing)
 
-    async def _search_vector(self, query: str, limit: int) -> list[dict]:
+    async def _search_vector(
+        self, query: str, limit: int, wing: Optional[str] = None,
+    ) -> list[dict]:
         import numpy as np
 
         query_vec = self._encoder.encode(query, normalize_embeddings=True).astype(
@@ -78,9 +97,13 @@ class MemoryStore:
         results = []
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM memories WHERE embedding IS NOT NULL"
-            ) as cursor:
+            if wing:
+                sql = "SELECT * FROM memories WHERE embedding IS NOT NULL AND wing = ?"
+                params = (wing,)
+            else:
+                sql = "SELECT * FROM memories WHERE embedding IS NOT NULL"
+                params = ()
+            async with db.execute(sql, params) as cursor:
                 async for row in cursor:
                     mem_vec = np.frombuffer(row["embedding"], dtype=np.float32)
                     score = float(np.dot(query_vec, mem_vec))
@@ -94,13 +117,19 @@ class MemoryStore:
 
         return top
 
-    async def _search_keyword(self, query: str, limit: int) -> list[dict]:
+    async def _search_keyword(
+        self, query: str, limit: int, wing: Optional[str] = None,
+    ) -> list[dict]:
         words = query.lower().split()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM memories ORDER BY importance DESC, created_at DESC"
-            ) as cursor:
+            if wing:
+                sql = "SELECT * FROM memories WHERE wing = ? ORDER BY importance DESC, created_at DESC"
+                params = (wing,)
+            else:
+                sql = "SELECT * FROM memories ORDER BY importance DESC, created_at DESC"
+                params = ()
+            async with db.execute(sql, params) as cursor:
                 all_mems = [dict(row) async for row in cursor]
 
         scored = []
@@ -144,12 +173,16 @@ class MemoryStore:
                 row = await cursor.fetchone()
                 return row[0]
 
+    VALID_WINGS = {"relationship", "work", "daily", "interest", "health", "general"}
+
     async def extract_from_conversation(
         self, user_msg: str, assistant_msg: str, llm_client
     ):
         prompt = f"""從這段對話中提取值得記住的資訊。
-只輸出 JSON array，每個元素: {{"content": "...", "category": "...", "importance": 0.0-1.0}}
+只輸出 JSON array，每個元素: {{"content": "...", "category": "...", "wing": "...", "room": "...", "importance": 0.0-1.0}}
 category 必須是: user_preference | event | fact | emotion | habit
+wing 必須是: relationship（感情相關）| work（工作相關）| daily（日常生活）| interest（興趣愛好）| health（健康相關）| general（其他）
+room 是 wing 下的子主題，自由命名（例如 anniversary, diet, project_x, gaming 等）
 如果沒有值得記住的，回傳空 array []
 不要輸出任何其他文字。
 
@@ -172,11 +205,19 @@ AI：{assistant_msg}"""
                 return
             for mem in memories:
                 if isinstance(mem, dict) and "content" in mem and "category" in mem:
+                    wing = mem.get("wing", "general")
+                    if wing not in self.VALID_WINGS:
+                        wing = "general"
                     await self.add(
                         content=mem["content"],
                         category=mem["category"],
                         importance=float(mem.get("importance", 0.5)),
+                        wing=wing,
+                        room=mem.get("room", "misc"),
                     )
-                    logger.info(f"Memory extracted: {mem['content'][:50]}...")
+                    logger.info(
+                        f"Memory extracted [{wing}/{mem.get('room', 'misc')}]: "
+                        f"{mem['content'][:50]}..."
+                    )
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"Memory extraction failed: {e}")

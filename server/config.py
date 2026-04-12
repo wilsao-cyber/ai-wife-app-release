@@ -73,6 +73,16 @@ class TTSConfig(BaseSettings):
     voicebox_model_size: str = "1.7B"
     voicebox_concurrency: int = 2
     audio_fx_enabled: bool = True
+    # Qwen3-TTS direct integration
+    qwen3tts_mode: str = "custom_voice"  # "custom_voice" (preset speakers + instruct) or "voice_clone" (ref audio clone)
+    qwen3tts_speaker: str = "Ono_Anna"  # For custom_voice mode: Vivian, Serena, Ono_Anna, Sohee, etc.
+    qwen3tts_device: str = "cuda:0"
+    # voice_clone mode settings
+    qwen3tts_emotion_refs: dict = {}  # emotion -> audio path, e.g. {"neutral": "./voice_samples/neutral.wav"}
+    qwen3tts_ref_texts: dict = {}     # emotion -> reference text transcript
+    qwen3tts_x_vector_only: bool = False  # True = faster but lower clone quality
+    # nano-qwen3tts server (WSL2, fast inference)
+    nano_qwen3tts_url: str = "http://localhost:8091"
 
 
 class STTConfig(BaseSettings):
@@ -228,6 +238,13 @@ def save_config(cfg: ServerConfig, config_path: str = ""):
             "model_path": cfg.tts.model_path,
             "voice_sample_path": cfg.tts.voice_sample_path,
             "sample_rate": cfg.tts.sample_rate,
+            "qwen3tts_mode": cfg.tts.qwen3tts_mode,
+            "qwen3tts_speaker": cfg.tts.qwen3tts_speaker,
+            "qwen3tts_device": cfg.tts.qwen3tts_device,
+            "qwen3tts_emotion_refs": cfg.tts.qwen3tts_emotion_refs,
+            "qwen3tts_ref_texts": cfg.tts.qwen3tts_ref_texts,
+            "qwen3tts_x_vector_only": cfg.tts.qwen3tts_x_vector_only,
+            "nano_qwen3tts_url": cfg.tts.nano_qwen3tts_url,
         },
         "stt": {
             "provider": cfg.stt.provider, "model": cfg.stt.model,

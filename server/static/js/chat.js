@@ -53,8 +53,107 @@ function showGreeting(text) {
 }
 
 // ── Media rendering (used by SSE handler) ────────────────────────────
+// ── Background Screen Media Display ──
+let _screenMediaItems = [];
+let _screenMediaIndex = 0;
+
+function pushMediaToScreen(media) {
+  if (!media || !media.length || !window._bgScreen) return;
+  // Collect displayable items (images, iframes/videos)
+  const displayable = media.filter(m => (m.type === 'image' || m.type === 'iframe' || m.type === 'video') && m.url);
+  if (!displayable.length) return;
+
+  _screenMediaItems = displayable;
+  _screenMediaIndex = 0;
+  _showScreenMediaAt(0);
+  _updateScreenNav();
+}
+
+function _showScreenMediaAt(idx) {
+  if (!window._bgScreen || idx < 0 || idx >= _screenMediaItems.length) return;
+  _screenMediaIndex = idx;
+  const item = _screenMediaItems[idx];
+
+  if (item.type === 'iframe') {
+    // YouTube — show thumbnail on 3D plane (behind character)
+    const ytMatch = (item.url || '').match(/youtube\.com\/embed\/([^?&]+)/);
+    if (ytMatch) {
+      // Show YouTube thumbnail on the 3D plane
+      const thumbUrl = `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+      window._bgScreen.showImageUrl(thumbUrl);
+    } else if (item.thumbnail) {
+      window._bgScreen.showImageUrl(item.thumbnail);
+    } else {
+      window._bgScreen.drawText(item.title || 'Video', { fontSize: 40 });
+    }
+  } else if (item.type === 'video') {
+    // Direct video — show on 3D plane via thumbnail or first frame
+    if (item.thumbnail) {
+      window._bgScreen.showImageUrl(item.thumbnail);
+    } else {
+      window._bgScreen.drawText(item.title || 'Video', { fontSize: 40 });
+    }
+  } else {
+    // Image — show on 3D plane (behind character)
+    window._bgScreen.showImageUrl(item.url);
+  }
+  _updateScreenNav();
+}
+
+function _updateScreenNav() {
+  // Create or update navigation overlay
+  let nav = document.getElementById('screen-nav-overlay');
+  if (!nav) {
+    nav = document.createElement('div');
+    nav.id = 'screen-nav-overlay';
+    nav.style.cssText = 'position:absolute;bottom:60px;left:50%;transform:translateX(-50%);z-index:55;display:flex;gap:8px;align-items:center;background:rgba(0,0,0,0.6);padding:6px 14px;border-radius:20px;';
+
+    const prevBtn = document.createElement('button');
+    prevBtn.textContent = '◀';
+    prevBtn.id = 'screen-nav-prev';
+    prevBtn.style.cssText = 'background:none;border:1px solid #888;border-radius:50%;color:#fff;width:30px;height:30px;cursor:pointer;font-size:14px;';
+    prevBtn.onclick = () => { if (_screenMediaIndex > 0) _showScreenMediaAt(_screenMediaIndex - 1); };
+
+    const indicator = document.createElement('span');
+    indicator.id = 'screen-nav-indicator';
+    indicator.style.cssText = 'color:#ccc;font-size:12px;min-width:50px;text-align:center;';
+
+    const nextBtn = document.createElement('button');
+    nextBtn.textContent = '▶';
+    nextBtn.id = 'screen-nav-next';
+    nextBtn.style.cssText = 'background:none;border:1px solid #888;border-radius:50%;color:#fff;width:30px;height:30px;cursor:pointer;font-size:14px;';
+    nextBtn.onclick = () => { if (_screenMediaIndex < _screenMediaItems.length - 1) _showScreenMediaAt(_screenMediaIndex + 1); };
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'background:none;border:1px solid #888;border-radius:50%;color:#fff;width:30px;height:30px;cursor:pointer;font-size:14px;margin-left:8px;';
+    closeBtn.onclick = () => {
+      if (window._bgScreen) window._bgScreen.hide();
+      nav.style.display = 'none';
+      _screenMediaItems = [];
+    };
+
+    nav.appendChild(prevBtn);
+    nav.appendChild(indicator);
+    nav.appendChild(nextBtn);
+    nav.appendChild(closeBtn);
+    document.body.appendChild(nav);
+  }
+
+  if (_screenMediaItems.length > 0) {
+    nav.style.display = 'flex';
+    document.getElementById('screen-nav-indicator').textContent = `${_screenMediaIndex + 1} / ${_screenMediaItems.length}`;
+    document.getElementById('screen-nav-prev').disabled = _screenMediaIndex === 0;
+    document.getElementById('screen-nav-next').disabled = _screenMediaIndex === _screenMediaItems.length - 1;
+  } else {
+    nav.style.display = 'none';
+  }
+}
+
 function renderMediaInChat(container, media) {
   if (!media || !Array.isArray(media)) return;
+  // Auto-push to background screen
+  pushMediaToScreen(media);
   media.forEach((item, idx) => {
     if (item.type === 'image') {
       const img = document.createElement('img');

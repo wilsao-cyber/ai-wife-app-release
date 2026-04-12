@@ -3,14 +3,14 @@
 Setup Google OAuth for Gmail and Calendar.
 
 Prerequisites:
-1. Go to https://console.cloud.google.com/apis/credentials/consent?project=ai-wife-app-2026
+1. Go to https://console.cloud.google.com/apis/credentials/consent?project=YOUR_GCP_PROJECT_ID
    - Choose External -> Create
    - App name: AI Wife App, email: your email
    - Add scopes: Gmail API, Calendar API
    - Add test user: your email
    - Save
 
-2. Go to https://console.cloud.google.com/apis/credentials?project=ai-wife-app-2026
+2. Go to https://console.cloud.google.com/apis/credentials?project=YOUR_GCP_PROJECT_ID
    - Create Credentials -> OAuth Client ID -> Desktop app
    - Download JSON -> save as ../config/credentials.json
 

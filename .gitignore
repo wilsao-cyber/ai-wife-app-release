@@ -26,6 +26,10 @@ config/*_token.json
 
 # Runtime data
 server/memory/memories.db
+server/memory/L0_*.md
+server/memory/L1_*.md
+voice_samples/
+server/static/models/live2d/
 output/
 server/output/
 server/models/

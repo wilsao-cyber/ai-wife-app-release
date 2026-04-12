@@ -51,7 +51,7 @@
   /* Gradient overlay for chat readability */
   #vrm-container::after {
     content: ''; position: absolute; inset: 0; pointer-events: none;
-    background: linear-gradient(to left, rgba(28, 30, 42, 0.85) 0%, rgba(28, 30, 42, 0.4) 45%, transparent 70%);
+    background: linear-gradient(to left, rgba(28, 30, 42, 0.25) 0%, rgba(28, 30, 42, 0.08) 35%, transparent 55%);
     z-index: 1;
   }
 
@@ -81,7 +81,7 @@
   /* ── Floating Top Bar (Capsule) ──────────────────────────────────── */
   #top-bar {
     position: absolute; top: 12px; left: 12px;
-    display: flex; gap: 6px; align-items: center; z-index: 20;
+    display: flex; gap: 6px; align-items: center; z-index: 50;
     padding: 6px 12px; background: var(--glass);
     backdrop-filter: var(--blur); border-radius: 20px;
     border: 1px solid var(--glass-border);
@@ -390,31 +390,35 @@
 </head>
 <body>
 
+<!-- Top bar -->
+<div id="top-bar">
+  <span class="app-name">🌸 小愛</span>
+  <select id="mode-selector">
+    <option value="auto">自動</option>
+    <option value="chat">聊天</option>
+    <option value="assist">協助</option>
+  </select>
+  <select id="lang-selector">
+    <option value="zh-TW">繁體中文</option>
+    <option value="ja">日本語</option>
+    <option value="en">English</option>
+  </select>
+  <button id="tts-toggle" class="on" title="語音開關">🔊</button>
+  <button id="tts-mode-toggle" title="串流播放 / 完整播放">⚡</button>
+  <button id="fallback-toggle" title="使用備用模型 (無審查)">🔓</button>
+  <button id="deep-thinking-toggle" title="深度思考（解鎖 token 上限）">🧠</button>
+  <select id="scene-selector" title="切換場景">
+    <option value="home">🏠 居家</option>
+    <option value="sakura">🌸 櫻花</option>
+    <option value="fantasy">✨ 奇幻</option>
+    <option value="night">🌃 夜景</option>
+  </select>
+  <span id="model-display" style="font-size:11px;color:var(--text-muted);padding:2px 8px;background:var(--accent-muted);border-radius:10px;cursor:default;" title="在設定中切換模型">📡</span>
+  <button id="screen-toggle-topbar" title="背景螢幕 開/關" style="background:none;border:1px solid var(--glass-border);border-radius:6px;color:var(--text-secondary);cursor:pointer;padding:2px 6px;font-size:13px;">🖥️</button>
+  <button id="chat-toggle-topbar" title="隱藏/顯示對話" style="background:none;border:1px solid var(--glass-border);border-radius:6px;color:var(--text-secondary);cursor:pointer;padding:2px 6px;font-size:13px;">💬</button>
+</div>
+
 <div id="vrm-container">
-  <div id="top-bar">
-    <span class="app-name">🌸 小愛</span>
-    <select id="mode-selector">
-      <option value="auto">自動</option>
-      <option value="chat">聊天</option>
-      <option value="assist">協助</option>
-    </select>
-    <select id="lang-selector">
-      <option value="zh-TW">繁體中文</option>
-      <option value="ja">日本語</option>
-      <option value="en">English</option>
-    </select>
-    <button id="tts-toggle" class="on" title="語音開關">🔊</button>
-    <button id="tts-mode-toggle" title="串流播放 / 完整播放">⚡</button>
-    <button id="fallback-toggle" title="使用備用模型 (無審查)">🔓</button>
-    <button id="deep-thinking-toggle" title="深度思考（解鎖 token 上限）">🧠</button>
-    <select id="scene-selector" title="切換場景">
-      <option value="home">🏠 居家</option>
-      <option value="sakura">🌸 櫻花</option>
-      <option value="fantasy">✨ 奇幻</option>
-      <option value="night">🌃 夜景</option>
-    </select>
-    <span id="model-display" style="font-size:11px;color:var(--text-muted);padding:2px 8px;background:var(--accent-muted);border-radius:10px;cursor:default;" title="在設定中切換模型">📡</span>
-  </div>
   <div id="loading"><div class="spinner"></div><span>Loading model...</span></div>
   <div id="error"></div>
 </div>
@@ -681,6 +685,23 @@
       <div style="display:flex;gap:8px;margin-top:12px;">
         <button id="reset-render-btn" style="flex:1;padding:8px;background:var(--bg-tertiary);color:var(--text-secondary);border:1px solid var(--glass-border);border-radius:6px;cursor:pointer;font-size:12px;">重置</button>
         <button id="save-preset-btn" style="flex:1;padding:8px;background:var(--accent-muted);color:var(--accent);border:1px solid var(--glass-border);border-radius:6px;cursor:pointer;font-size:12px;">存為新模式</button>
+      </div>
+      <!-- Background Screen Controls -->
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--glass-border);">
+        <label style="color:var(--accent);font-size:13px;font-weight:bold;">🖥️ 背景螢幕</label>
+        <div style="display:flex;align-items:center;gap:8px;margin:8px 0;">
+          <button id="screen-toggle-btn" style="padding:6px 14px;border:1px solid var(--glass-border);border-radius:6px;background:var(--bg-tertiary);color:var(--text-secondary);cursor:pointer;font-size:12px;">顯示/隱藏</button>
+          <button id="screen-clear-btn" style="padding:6px 14px;border:1px solid var(--glass-border);border-radius:6px;background:var(--bg-tertiary);color:var(--text-secondary);cursor:pointer;font-size:12px;">清除</button>
+        </div>
+        <div style="margin:6px 0;">
+          <label style="color:var(--text-secondary);font-size:11px;">上傳圖片/影片</label>
+          <input id="screen-upload" type="file" accept="image/*,video/*" style="width:100%;margin:4px 0;font-size:10px;color:var(--text-primary);">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin:6px 0;">
+          <label style="color:var(--text-secondary);font-size:11px;min-width:40px;">亮度</label>
+          <input id="screen-opacity" type="range" min="0" max="100" value="90" style="flex:1;">
+          <span id="screen-opacity-val" style="color:var(--text-muted);font-size:11px;min-width:30px;">90%</span>
+        </div>
       </div>
     </div>
     <div class="tab-body" id="tab-music">
@@ -1215,6 +1236,130 @@ function initScene() {
   rimRight.position.set(2, 1.5, -1);
   scene.add(rimRight);
 
+  // ── Background Display Screen ──
+  // Hybrid: Three.js plane for images (behind character, correct depth),
+  // HTML overlay for iframe/video (YouTube etc, in front but with controls)
+
+  // 3D plane behind character for images
+  const screenCanvas = document.createElement('canvas');
+  screenCanvas.width = 1920; screenCanvas.height = 1080;
+  const screenCtx = screenCanvas.getContext('2d');
+  screenCtx.fillStyle = '#111'; screenCtx.fillRect(0, 0, 1920, 1080);
+
+  const screenTexture = new THREE.CanvasTexture(screenCanvas);
+  const screenMaterial = new THREE.MeshBasicMaterial({
+    map: screenTexture, transparent: true, opacity: 0.95,
+  });
+  const screenGeom = new THREE.PlaneGeometry(3.5, 2);
+  const screenMesh = new THREE.Mesh(screenGeom, screenMaterial);
+  screenMesh.position.set(0, 1.2, -1.8);
+  screenMesh.visible = false;
+  scene.add(screenMesh);
+
+  // HTML overlay for iframe/video (only used when needed)
+  const screenOverlay = document.createElement('div');
+  screenOverlay.id = 'bg-screen-overlay';
+  screenOverlay.style.cssText = 'position:absolute;inset:5% 10%;z-index:2;display:none;background:#000;border-radius:8px;overflow:hidden;box-shadow:0 0 40px rgba(0,0,0,0.5);pointer-events:auto;';
+  document.body.insertBefore(screenOverlay, document.getElementById('vrm-container'));
+
+  let _screenVisible = false;
+  let _screenMode = 'none'; // 'plane' | 'overlay' | 'none'
+
+  window._bgScreen = {
+    get mesh() { return { visible: _screenVisible }; },
+    show() {
+      _screenVisible = true;
+      if (_screenMode === 'overlay') { screenOverlay.style.display = 'block'; }
+      else { screenMesh.visible = true; }
+    },
+    hide() {
+      _screenVisible = false;
+      screenMesh.visible = false;
+      screenOverlay.style.display = 'none';
+    },
+    toggle() { _screenVisible ? this.hide() : this.show(); },
+    setOpacity(v) {
+      screenMaterial.opacity = v;
+      screenOverlay.style.opacity = v;
+    },
+    clear() {
+      screenCtx.fillStyle = '#111'; screenCtx.fillRect(0, 0, 1920, 1080);
+      screenTexture.needsUpdate = true;
+      screenOverlay.innerHTML = '';
+      screenOverlay.style.display = 'none';
+      _screenMode = 'none';
+    },
+    // Images: render on 3D plane (behind character)
+    drawImage(img) {
+      screenOverlay.style.display = 'none';
+      screenCtx.fillStyle = '#000'; screenCtx.fillRect(0, 0, 1920, 1080);
+      const scale = Math.min(1920 / img.width, 1080 / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      screenCtx.drawImage(img, (1920 - w) / 2, (1080 - h) / 2, w, h);
+      screenTexture.needsUpdate = true;
+      screenMesh.visible = true;
+      _screenMode = 'plane'; _screenVisible = true;
+    },
+    showImageUrl(url) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      const self = this;
+      img.onload = () => self.drawImage(img);
+      img.onerror = () => {
+        // Retry via proxy
+        const img2 = new Image();
+        img2.onload = () => self.drawImage(img2);
+        img2.onerror = () => self.drawText('Image load failed', { color: '#f66' });
+        img2.src = `/api/proxy/image?url=${encodeURIComponent(url)}`;
+      };
+      img.src = url;
+    },
+    drawText(text, opts = {}) {
+      screenOverlay.style.display = 'none';
+      const { fontSize = 36, color = '#eee', bg = '#1a1a2e' } = opts;
+      screenCtx.fillStyle = bg; screenCtx.fillRect(0, 0, 1920, 1080);
+      screenCtx.fillStyle = color; screenCtx.font = `${fontSize}px sans-serif`;
+      screenCtx.textAlign = 'left'; screenCtx.textBaseline = 'top';
+      const lines = text.split('\n');
+      const lineHeight = fontSize * 1.4;
+      const startY = Math.max(40, (1080 - lines.length * lineHeight) / 2);
+      lines.forEach((line, i) => screenCtx.fillText(line, 60, startY + i * lineHeight));
+      screenTexture.needsUpdate = true;
+      screenMesh.visible = true;
+      _screenMode = 'plane'; _screenVisible = true;
+    },
+    // Video/iframe: use HTML overlay (in front, with controls)
+    showVideo(url) {
+      screenMesh.visible = false;
+      screenOverlay.innerHTML = '';
+      const video = document.createElement('video');
+      video.src = url; video.controls = true; video.autoplay = true; video.loop = true;
+      video.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
+      screenOverlay.appendChild(video);
+      screenOverlay.style.display = 'block';
+      _screenMode = 'overlay'; _screenVisible = true;
+    },
+    showIframe(url) {
+      screenMesh.visible = false;
+      screenOverlay.innerHTML = '';
+      const iframe = document.createElement('iframe');
+      iframe.src = url;
+      iframe.style.cssText = 'width:100%;height:100%;border:none;';
+      iframe.sandbox = 'allow-scripts allow-same-origin allow-popups';
+      iframe.allow = 'autoplay; encrypted-media';
+      iframe.allowFullscreen = true;
+      screenOverlay.appendChild(iframe);
+      screenOverlay.style.display = 'block';
+      _screenMode = 'overlay'; _screenVisible = true;
+    },
+    showYouTube(videoId) {
+      // Sanitize videoId to prevent URL injection
+      const safeId = (videoId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+      if (!safeId) return;
+      this.showIframe(`https://www.youtube.com/embed/${safeId}?autoplay=1&rel=0`);
+    },
+  };
+
   // Apply saved or default scene theme
   const savedScene = localStorage.getItem('ai-wife-scene') || 'home';
   applySceneTheme(savedScene);
@@ -1381,33 +1526,57 @@ function animate() {
 
     // ── Expression blending (smooth lerp) ──
     if (currentVrm.expressionManager) {
+      // Expressions that affect eyes (used to suppress blink)
+      const eyeExpressions = ['happy', 'relaxed', 'horny'];
+      // Expressions that affect mouth (used to reduce lip sync)
+      const mouthExpressions = ['happy', 'angry', 'surprised', 'sad'];
+
+      let activeExprWeight = 0;  // how much expression is active (0-1)
+      let eyesClosed = false;    // is current expression closing eyes?
+
       const exprNames = currentVrm.expressionManager.expressions.map(e => e.expressionName);
+      const mouthShapes = ['aa', 'ih', 'ou', 'ee', 'oh'];
+
       for (const name of exprNames) {
-        if (name === 'blink') continue; // blink handled separately
+        if (name === 'blink') continue;
+        if (mouthShapes.includes(name)) continue; // mouth shapes handled below
         const target = targetExpressions[name] || 0;
         const current = currentExpressions[name] || 0;
         const next = current + (target - current) * Math.min(1, delta * EXPRESSION_LERP_SPEED);
         currentExpressions[name] = next < 0.01 && target === 0 ? 0 : next;
         currentVrm.expressionManager.setValue(name, currentExpressions[name]);
+
+        if (currentExpressions[name] > 0.1) {
+          activeExprWeight = Math.max(activeExprWeight, currentExpressions[name]);
+          if (eyeExpressions.includes(name)) eyesClosed = true;
+        }
       }
 
-      // Blink (overlay on top of any expression)
+      // Blink — suppress when expression already closes eyes
       const t = clock.getElapsedTime();
-      if (t >= blinkEndTime && t >= nextBlinkTime) {
-        currentVrm.expressionManager.setValue('blink', 1.0);
-        blinkEndTime = t + 0.15;
-        nextBlinkTime = t + 2 + Math.random() * 4;
-      } else if (t >= blinkEndTime) {
+      if (!eyesClosed) {
+        if (t >= blinkEndTime && t >= nextBlinkTime) {
+          currentVrm.expressionManager.setValue('blink', 1.0);
+          blinkEndTime = t + 0.15;
+          nextBlinkTime = t + 2 + Math.random() * 4;
+        } else if (t >= blinkEndTime) {
+          currentVrm.expressionManager.setValue('blink', 0);
+        }
+      } else {
+        // Keep blink at 0 when expression handles eyes
         currentVrm.expressionManager.setValue('blink', 0);
+        // Push next blink time forward so it doesn't fire immediately after expression ends
+        if (t >= nextBlinkTime) nextBlinkTime = t + 1 + Math.random() * 3;
       }
 
-      // Lip sync — drive mouth shapes from TTS audio frequency
+      // Lip sync — reduce weight when expression is active to prevent clipping
       const mouth = getLipSyncValues();
-      const mouthShapes = ['aa', 'ih', 'ou', 'ee', 'oh'];
       const hasMouth = mouthShapes.some(s => mouth[s] > 0);
+      // Scale down lip sync when an expression that affects mouth is active
+      const lipScale = 1.0 - activeExprWeight * 0.7;  // e.g. happy at 1.0 → lip sync at 0.3
       for (const s of mouthShapes) {
         if (hasMouth) {
-          currentVrm.expressionManager.setValue(s, mouth[s]);
+          currentVrm.expressionManager.setValue(s, Math.min(1.0, mouth[s] * lipScale));
         } else if (!targetExpressions[s]) {
           currentVrm.expressionManager.setValue(s, 0);
         }
@@ -1472,15 +1641,13 @@ function setMouthShape(shapeId, weight = 1.0, duration = 2000) {
 }
 
 function setEmotion(emotion) {
-  console.log('[setEmotion]', emotion, 'vrm:', !!currentVrm, 'exprMgr:', !!(currentVrm && currentVrm.expressionManager));
+  console.log('[setEmotion]', emotion);
   if (!currentVrm || !currentVrm.expressionManager) return;
-  // Set target expressions for smooth blending
   const newTargets = {};
   const name = emotionToExpression[emotion] || 'neutral';
   if (name !== 'neutral') newTargets[name] = 1.0;
   targetExpressions = newTargets;
 
-  // Play matching animation (with fallback to idle)
   if (animController) {
     let anim = emotionToAnim[emotion] || 'idle';
     if (!animController.actions.has(anim)) anim = 'idle';
@@ -1587,6 +1754,33 @@ deepThinkingBtn.onclick = () => {
   showToast(deepThinking ? '🧠 深度思考已開啟' : '🧠 深度思考已關閉');
 };
 
+// Background screen toggle (top bar)
+const screenTopBtn = document.getElementById('screen-toggle-topbar');
+if (screenTopBtn) {
+  screenTopBtn.onclick = () => {
+    if (window._bgScreen) {
+      window._bgScreen.toggle();
+      screenTopBtn.style.color = window._bgScreen.mesh.visible ? 'var(--accent)' : 'var(--text-secondary)';
+      screenTopBtn.style.borderColor = window._bgScreen.mesh.visible ? 'var(--accent)' : 'var(--glass-border)';
+    }
+  };
+}
+
+// Chat panel toggle (top bar)
+const chatToggleBtn = document.getElementById('chat-toggle-topbar');
+let chatVisible = true;
+if (chatToggleBtn) {
+  chatToggleBtn.onclick = () => {
+    chatVisible = !chatVisible;
+    const chatPanel = document.getElementById('chat-panel');
+    if (chatPanel) {
+      chatPanel.style.display = chatVisible ? '' : 'none';
+    }
+    chatToggleBtn.style.color = chatVisible ? 'var(--text-secondary)' : 'var(--accent)';
+    chatToggleBtn.style.borderColor = chatVisible ? 'var(--glass-border)' : 'var(--accent)';
+  };
+}
+
 // TTS playback mode toggle (streaming vs batch)
 let ttsBatchMode = localStorage.getItem('ai-wife-tts-batch') === 'on';
 const ttsModeToggleBtn = document.getElementById('tts-mode-toggle');
@@ -1676,6 +1870,7 @@ function showLightboxItem() {
     const iframe = document.createElement('iframe');
     iframe.className = 'lb-video';
     iframe.src = item.url;
+    iframe.sandbox = 'allow-scripts allow-same-origin allow-popups';
     iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
     iframe.allowFullscreen = true;
     iframe.style.cssText = 'width:80vw;height:70vh;max-width:1200px;border:none;border-radius:8px;';

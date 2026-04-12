@@ -19,6 +19,25 @@ class TTSEngine:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self._model = None
         self._llm_client = llm_client
+        self._qwen3tts_mode = getattr(config, "qwen3tts_mode", "custom_voice")
+        self._emotion_prompts = {}
+        # Clean old audio files on startup (>1 hour old)
+        self._cleanup_old_audio()
+
+    def _cleanup_old_audio(self, max_age_hours: int = 1):
+        """Remove audio files older than max_age_hours to prevent disk growth."""
+        import time
+        cutoff = time.time() - max_age_hours * 3600
+        count = 0
+        for f in self.output_dir.glob("*.wav"):
+            try:
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    count += 1
+            except Exception:
+                pass
+        if count:
+            logger.info(f"Cleaned up {count} old audio files")
 
     async def initialize(self):
         logger.info(f"Initializing TTS engine with provider: {self.provider}")
@@ -28,6 +47,10 @@ class TTSEngine:
             await self._init_gpt_sovits()
         elif self.provider == "voicebox":
             await self._init_voicebox()
+        elif self.provider == "qwen3tts":
+            await self._init_qwen3tts()
+        elif self.provider == "nano_qwen3tts":
+            await self._init_nano_qwen3tts()
         else:
             raise ValueError(f"Unsupported TTS provider: {self.provider}")
 
@@ -57,6 +80,284 @@ class TTSEngine:
             logger.warning(f"Voicebox not available: {e}")
             self._model = None
 
+    # Available preset speakers for CustomVoice mode
+    PRESET_SPEAKERS = {
+        "Ono_Anna":  {"language": "Japanese", "description": "活潑日語女聲", "gender": "female"},
+        "Vivian":    {"language": "Chinese",  "description": "年輕中文女聲", "gender": "female"},
+        "Serena":    {"language": "Chinese",  "description": "溫暖中文女聲", "gender": "female"},
+        "Sohee":     {"language": "Korean",   "description": "韓語女聲",     "gender": "female"},
+        "Ryan":      {"language": "English",  "description": "動感英語男聲", "gender": "male"},
+        "Aiden":     {"language": "English",  "description": "美式英語男聲", "gender": "male"},
+        "Uncle_Fu":  {"language": "Chinese",  "description": "成熟中文男聲", "gender": "male"},
+        "Dylan":     {"language": "Chinese",  "description": "北京中文男聲", "gender": "male"},
+        "Eric":      {"language": "Chinese",  "description": "四川中文男聲", "gender": "male"},
+    }
+
+    # ── Emotion Instruct System ──────────────────────────────────────
+    # Base style (common prefix) + emotion modifier (per-emotion suffix)
+    # Users can override these via /api/tts/emotion-prompts
+
+    INSTRUCT_BASE_ZH = ""
+    INSTRUCT_MODIFIER_ZH = {
+        "neutral": (
+            "音高: 女性中音区，语调自然平稳。"
+            "语速: 适中偏慢，节奏从容。"
+            "音量: 正常交谈音量。"
+            "音色质感: 音色柔和清亮，温暖自然。"
+            "情绪: 平静温柔，亲切友好。"
+            "流畅度: 表达流畅自如。"
+        ),
+        "happy": (
+            "音高: 女性中高音区，语调明显上扬，尾音带笑意上挑。"
+            "语速: 语速明快活泼，节奏轻快有弹性。"
+            "音量: 比正常稍大，笑声响亮。"
+            "音色质感: 音色明亮清脆，富有活力，带着爽朗笑意。"
+            "情绪: 愉悦兴奋，发自内心的开心，伴随轻笑。"
+            "流畅度: 表达流畅自如，偶有因开心而加速。"
+        ),
+        "sad": (
+            "音高: 女性中低音区，语调下沉低缓，句尾下降。"
+            "语速: 语速缓慢，偶有停顿叹息。"
+            "音量: 音量偏小，轻声诉说。"
+            "音色质感: 声音轻柔带气息感，略带颤抖和哭腔。"
+            "情绪: 悲伤低落，带着压抑的委屈，仿佛每个字都承载着沉重。"
+            "流畅度: 偶有因情绪波动而产生的停顿。"
+        ),
+        "angry": (
+            "音高: 女性中高音区，语调尖锐有力，重音明显。"
+            "语速: 语速偏快，节奏紧凑急促。"
+            "音量: 音量明显增大，接近斥责。"
+            "音色质感: 声音尖锐有力度，带着紧绷感。"
+            "情绪: 恼怒不满，语带斥责和威慑，情绪激动。"
+            "流畅度: 表达连贯有力，字字分明。"
+        ),
+        "surprised": (
+            "音高: 女性高音区，语调突然升高，起伏大。"
+            "语速: 初始快速，之后放慢回味。"
+            "音量: 音量突然增大。"
+            "音色质感: 声音明亮，带有惊叹的气息感。"
+            "情绪: 惊讶震惊，眼睛睁大的感觉，伴随惊喜。"
+            "流畅度: 初始可能有短暂停顿，之后流畅。"
+        ),
+        "relaxed": (
+            "音高: 女性低音区，语调平缓低柔。"
+            "语速: 语速极慢，从容不迫。"
+            "音量: 音量很小，接近耳语。"
+            "音色质感: 声音温柔如丝，带有轻微气声，像在耳边低语。"
+            "情绪: 放松慵懒，安静平和，带着睡意般的舒适感。"
+            "流畅度: 极其流畅柔滑。"
+        ),
+        "horny": (
+            "音高: 女性低音区，音调低沉带磁性。"
+            "语速: 语速极慢，每个字都拖长。"
+            "音量: 音量很小，气声明显。"
+            "音色质感: 声音低沉带气声，略带沙哑和颤抖，呼吸声清晰可闻，"
+            "尾音拖长上扬，带有轻微呻吟感。"
+            "情绪: 害羞但沉浸其中，呼吸急促，声音轻颤，欲言又止。"
+            "流畅度: 偶有因喘息而产生的自然停顿。"
+        ),
+    }
+
+    async def _init_qwen3tts(self):
+        """Load Qwen3-TTS model. Supports both CustomVoice and VoiceClone modes."""
+        self._qwen3tts_mode = getattr(self.config, "qwen3tts_mode", "custom_voice")
+        self._emotion_prompts = {}  # For voice_clone mode
+
+        try:
+            import torch
+            from qwen_tts import Qwen3TTSModel
+
+            # Pick model based on mode
+            if self._qwen3tts_mode == "custom_voice":
+                model_name = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+            else:
+                model_name = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+
+            device = self.config.qwen3tts_device
+            logger.info(f"Loading Qwen3-TTS [{self._qwen3tts_mode}]: {model_name} on {device}")
+
+            attn_impl = "sdpa"  # PyTorch native SDPA, works on Windows
+            try:
+                import flash_attn  # noqa: F401
+                attn_impl = "flash_attention_2"  # Prefer if available
+            except ImportError:
+                pass
+
+            try:
+                self._model = Qwen3TTSModel.from_pretrained(
+                    model_name,
+                    device_map=device,
+                    dtype=torch.bfloat16,
+                    attn_implementation=attn_impl,
+                )
+            except Exception as load_err:
+                logger.warning(f"from_pretrained with device_map={device} failed: {load_err}, retrying without device_map...")
+                self._model = Qwen3TTSModel.from_pretrained(
+                    model_name,
+                    dtype=torch.bfloat16,
+                    attn_implementation=attn_impl,
+                )
+                if torch.cuda.is_available():
+                    self._model = self._model.to(device)
+
+            if self._model is None:
+                logger.error("Qwen3TTSModel.from_pretrained returned None!")
+                return
+            logger.info(f"Qwen3-TTS model loaded (attn={attn_impl})")
+
+            if self._qwen3tts_mode == "custom_voice":
+                speaker = getattr(self.config, "qwen3tts_speaker", "Ono_Anna")
+                info = self.PRESET_SPEAKERS.get(speaker, {})
+                logger.info(
+                    f"CustomVoice ready: speaker={speaker} "
+                    f"({info.get('description', '?')}, {info.get('language', '?')})"
+                )
+            else:
+                # Voice clone: pre-compute prompts for each emotion ref
+                self._build_clone_prompts()
+
+        except ImportError:
+            logger.error("qwen-tts not installed. Run: pip install -U qwen-tts")
+            self._model = None
+        except Exception as e:
+            logger.error(f"Qwen3-TTS initialization failed: {e}")
+            self._model = None
+
+    def _build_clone_prompts(self):
+        """Pre-compute voice_clone_prompt for each emotion reference audio."""
+        self._emotion_prompts = {}
+        emotion_refs = self.config.qwen3tts_emotion_refs or {}
+        ref_texts = self.config.qwen3tts_ref_texts or {}
+        x_vector_only = self.config.qwen3tts_x_vector_only
+
+        if not emotion_refs:
+            logger.warning(
+                "No qwen3tts_emotion_refs configured. "
+                "Voice clone needs reference audio files."
+            )
+            return
+
+        for emotion, audio_path in emotion_refs.items():
+            if not os.path.exists(audio_path):
+                logger.warning(f"Emotion ref audio not found: {emotion} -> {audio_path}")
+                continue
+            ref_text = ref_texts.get(emotion, "")
+            try:
+                use_xvec = x_vector_only or not ref_text
+                if not ref_text and not x_vector_only:
+                    logger.warning(f"No ref_text for '{emotion}', using x_vector_only")
+                prompt = self._model.create_voice_clone_prompt(
+                    ref_audio=audio_path,
+                    ref_text=ref_text if not use_xvec else "",
+                    x_vector_only_mode=use_xvec,
+                )
+                self._emotion_prompts[emotion] = prompt
+                logger.info(f"Voice prompt ready: {emotion} (x_vector={use_xvec})")
+            except Exception as e:
+                logger.error(f"Failed to build voice prompt for {emotion}: {e}")
+
+        if self._emotion_prompts:
+            logger.info(
+                f"VoiceClone ready with {len(self._emotion_prompts)} emotion prompts: "
+                f"{list(self._emotion_prompts.keys())}"
+            )
+        else:
+            logger.warning("No emotion prompts built — check config")
+
+    async def _init_nano_qwen3tts(self):
+        """Test connection to nano-qwen3tts server (WSL2)."""
+        import httpx
+        nano_url = getattr(self.config, 'nano_qwen3tts_url', 'http://localhost:8091')
+        self._nano_url = nano_url
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{nano_url}/health")
+                if resp.status_code == 200:
+                    logger.info(f"nano-qwen3tts connected at {nano_url}")
+                    # Get available voices
+                    voices_resp = await client.get(f"{nano_url}/voices")
+                    if voices_resp.status_code == 200:
+                        voices = voices_resp.json()
+                        logger.info(f"nano-qwen3tts voices: {voices.get('default', [])}")
+                else:
+                    logger.warning(f"nano-qwen3tts returned {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"nano-qwen3tts not available at {nano_url}: {e}")
+
+    async def _synthesize_nano_qwen3tts(
+        self, text: str, language: str = "zh-TW", emotion: str = "neutral"
+    ) -> tuple[str, list[dict], str]:
+        """Synthesize via nano-qwen3tts HTTP server (fast, WSL2)."""
+        import uuid
+        import httpx
+        import struct
+
+        synth_text, sentences, instruct, tts_language = await self._prepare_tts_qwen3tts(
+            text, language, emotion
+        )
+        if not sentences:
+            result = await self._mock_synthesize(text, language)
+            return result[0], result[1], ""
+
+        output_filename = f"{uuid.uuid4()}.wav"
+        output_path = self.output_dir / output_filename
+
+        try:
+            speaker = getattr(self.config, 'qwen3tts_speaker', 'Ono_Anna')
+            all_pcm = b''
+
+            import aiohttp
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=300)) as session:
+                for i, sent in enumerate(sentences):
+                    payload = {
+                        "text": sent,
+                        "language": tts_language,
+                        "speaker": speaker,
+                        "instruct": instruct,
+                    }
+                    logger.info(f"nano-qwen3tts [{i+1}/{len(sentences)}]: {sent[:40]}...")
+                    async with session.post(f"{self._nano_url}/v1/audio/speech", json=payload) as resp:
+                        resp.raise_for_status()
+                        pcm_data = await resp.read()
+                    if pcm_data:
+                        all_pcm += pcm_data
+                        logger.info(f"nano-qwen3tts [{i+1}]: got {len(pcm_data)} bytes PCM")
+                    else:
+                        logger.warning(f"nano-qwen3tts [{i+1}]: empty response")
+
+            if not all_pcm:
+                raise RuntimeError("No audio data received from nano-qwen3tts")
+
+            # Convert raw PCM 16-bit mono 24kHz to WAV
+            sample_rate = 24000
+
+            with open(str(output_path), "wb") as f:
+                data_size = len(all_pcm)
+                f.write(b"RIFF")
+                f.write(struct.pack("<I", 36 + data_size))
+                f.write(b"WAVE")
+                f.write(b"fmt ")
+                f.write(struct.pack("<I", 16))
+                f.write(struct.pack("<H", 1))  # PCM
+                f.write(struct.pack("<H", 1))  # mono
+                f.write(struct.pack("<I", sample_rate))
+                f.write(struct.pack("<I", sample_rate * 2))
+                f.write(struct.pack("<H", 2))  # block align
+                f.write(struct.pack("<H", 16))  # bits per sample
+                f.write(b"data")
+                f.write(struct.pack("<I", data_size))
+                f.write(all_pcm)
+
+            logger.info(f"nano-qwen3tts synthesized: {output_filename} ({len(sentences)} parts, {len(all_pcm)} bytes)")
+            visemes = self._generate_visemes_from_audio(str(output_path), synth_text)
+            return output_filename, visemes, synth_text
+
+        except Exception as e:
+            import traceback
+            logger.error(f"nano-qwen3tts synthesis failed: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+            result = await self._mock_synthesize(text, language)
+            return result[0], result[1], synth_text
+
     async def _init_cosyvoice(self):
         try:
             from cosyvoice.cli.cosyvoice import CosyVoice
@@ -77,15 +378,112 @@ class TTSEngine:
             logger.warning("GPT-SoVITS not installed, using mock TTS")
             self._model = None
 
-    EMOTION_INSTRUCT_MAP = {
-        "happy": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください。嬉しくて、思わず笑顔になるような弾んだ声で",
-        "sad": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください。少し寂しそうに、甘えるような声で",
-        "angry": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください。少し拗ねた、可愛く怒った声で",
-        "surprised": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください。驚いた、でも嬉しそうな声で",
-        "relaxed": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください。穏やかで、囁くような甘い声で",
-        "neutral": "恋人に話しかけるように、甘くて可愛い声で、愛情たっぷりに、とてもゆっくり丁寧に話してください",
-        "horny": "恋人に甘く囁くように、吐息を漏らしながら、恥ずかしそうだけど感じている声で、とてもゆっくり囁いてください",
+    INSTRUCT_BASE_JA = ""
+    INSTRUCT_MODIFIER_JA = {
+        "neutral": (
+            "pitch: Female mid-range, natural and stable intonation. "
+            "speed: Moderate pace, relaxed rhythm. "
+            "volume: Normal conversational level. "
+            "texture: Soft, clear, and warm vocal quality. "
+            "emotion: Calm, gentle, and friendly. "
+            "fluency: Smooth and natural delivery."
+        ),
+        "happy": (
+            "pitch: Female mid-high range, intonation rising with excitement, upward inflections at phrase ends. "
+            "speed: Brisk and lively pace with bouncy rhythm. "
+            "volume: Slightly louder than normal, bright projection. "
+            "texture: Bright, crisp vocal quality with audible smile. "
+            "emotion: Genuinely joyful, radiating warmth, with light laughter. "
+            "fluency: Fluent and energetic, occasionally speeding up with excitement."
+        ),
+        "sad": (
+            "pitch: Female low range, intonation descending, sentences trailing off softly. "
+            "speed: Slow pace with pauses for sighing. "
+            "volume: Quiet, speaking softly. "
+            "texture: Breathy, slightly trembling voice with a hint of crying. "
+            "emotion: Sorrowful and subdued, carrying suppressed grief in every word. "
+            "fluency: Occasional pauses from emotional weight."
+        ),
+        "angry": (
+            "pitch: Female mid-high range, sharp and forceful intonation with strong stress. "
+            "speed: Fast and clipped pace, tight rhythm. "
+            "volume: Notably loud, approaching a scolding tone. "
+            "texture: Sharp, tense vocal quality with intensity. "
+            "emotion: Frustrated and indignant, conveying irritation and displeasure. "
+            "fluency: Continuous and forceful, each word clearly articulated."
+        ),
+        "surprised": (
+            "pitch: Female high range, sudden sharp rise in pitch, wide intonation swings. "
+            "speed: Initially fast, then slowing to process. "
+            "volume: Suddenly louder. "
+            "texture: Bright with breathiness from shock. "
+            "emotion: Genuine surprise and astonishment, eyes-wide feeling. "
+            "fluency: Brief initial pause of shock, then fluent."
+        ),
+        "relaxed": (
+            "pitch: Female low range, gentle and flat intonation. "
+            "speed: Very slow, unhurried pace. "
+            "volume: Very quiet, close to a whisper. "
+            "texture: Silky smooth with light breathiness, like whispering by the ear. "
+            "emotion: Deeply relaxed and drowsy, peaceful comfort. "
+            "fluency: Extremely smooth and flowing."
+        ),
+        "horny": (
+            "pitch: Female low range with magnetic, husky quality. "
+            "speed: Extremely slow, each syllable drawn out. "
+            "volume: Very quiet with prominent breath sounds. "
+            "texture: Low, breathy voice with slight rasp and tremor, "
+            "audible breathing between phrases, trailing ends with soft moans. "
+            "emotion: Shy yet immersed, quickened breathing, voice quivering, hesitant. "
+            "fluency: Natural pauses from breathlessness."
+        ),
     }
+
+    def get_instruct(self, emotion: str, language: str = "Japanese") -> str:
+        """Build instruct string from base + modifier. Supports runtime overrides."""
+        # Check for user-customized prompts first
+        custom = getattr(self, '_custom_prompts', {})
+        custom_key = f"{language}_{emotion}"
+        if custom_key in custom:
+            return custom[custom_key]
+
+        if language == "Chinese":
+            base = self.INSTRUCT_BASE_ZH
+            modifier = self.INSTRUCT_MODIFIER_ZH.get(emotion, "")
+        else:
+            base = self.INSTRUCT_BASE_JA
+            modifier = self.INSTRUCT_MODIFIER_JA.get(emotion, "")
+        return (base + modifier).strip()
+
+    def set_custom_prompt(self, language: str, emotion: str, prompt: str):
+        """Set a custom instruct prompt for a specific language+emotion."""
+        if not hasattr(self, '_custom_prompts'):
+            self._custom_prompts = {}
+        self._custom_prompts[f"{language}_{emotion}"] = prompt
+
+    def clear_custom_prompt(self, language: str, emotion: str):
+        """Reset a custom prompt back to default."""
+        if hasattr(self, '_custom_prompts'):
+            self._custom_prompts.pop(f"{language}_{emotion}", None)
+
+    def get_all_prompts(self) -> dict:
+        """Return all current prompts (default + custom overrides)."""
+        result = {}
+        for lang, base, modifiers in [
+            ("Japanese", self.INSTRUCT_BASE_JA, self.INSTRUCT_MODIFIER_JA),
+            ("Chinese", self.INSTRUCT_BASE_ZH, self.INSTRUCT_MODIFIER_ZH),
+        ]:
+            result[lang] = {
+                "base": base,
+                "emotions": {},
+            }
+            for emo in modifiers:
+                result[lang]["emotions"][emo] = {
+                    "modifier": modifiers[emo],
+                    "full": self.get_instruct(emo, lang),
+                    "is_custom": f"{lang}_{emo}" in getattr(self, '_custom_prompts', {}),
+                }
+        return result
 
     async def synthesize(
         self, text: str, language: str = "zh-TW", emotion: str = "neutral"
@@ -93,6 +491,10 @@ class TTSEngine:
         """Returns (audio_filename, visemes, ja_text)."""
         if self.provider == "voicebox":
             return await self._synthesize_voicebox(text, language, emotion)
+        if self.provider == "qwen3tts":
+            return await self._synthesize_qwen3tts(text, language, emotion)
+        if self.provider == "nano_qwen3tts":
+            return await self._synthesize_nano_qwen3tts(text, language, emotion)
         if not self._model:
             result = await self._mock_synthesize(text, language)
             return result[0], result[1], ""
@@ -304,7 +706,7 @@ class TTSEngine:
         if not sentences:
             sentences = [ja_text]
 
-        instruct = self.EMOTION_INSTRUCT_MAP.get(emotion, self.EMOTION_INSTRUCT_MAP["neutral"])
+        instruct = self.get_instruct(emotion, "Japanese")
 
         # Select profile based on emotion
         if emotion == "horny" and self.config.voicebox_horny_profile_id:
@@ -391,15 +793,72 @@ class TTSEngine:
     ):
         """Async generator yielding SSE event dicts for streaming TTS.
         Uses parallel generation with ordered yield for minimal latency."""
-        import httpx
 
+        if self.provider == "nano_qwen3tts":
+            # nano-qwen3tts: HTTP to WSL2 server, sentence by sentence
+            synth_text, sentences, instruct, tts_lang = await self._prepare_tts_qwen3tts(
+                text, language, emotion
+            )
+            if not sentences:
+                return
+            yield {"type": "ja_text", "data": synth_text}
+            import httpx, uuid as _uuid, struct as _struct
+            speaker = getattr(self.config, 'qwen3tts_speaker', 'Ono_Anna')
+            import aiohttp as _aiohttp
+            async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=300)) as session:
+                for i, sent in enumerate(sentences):
+                    try:
+                        async with session.post(f"{self._nano_url}/v1/audio/speech",
+                                                json={"text": sent, "language": tts_lang, "speaker": speaker, "instruct": instruct}) as resp:
+                            resp.raise_for_status()
+                            pcm = await resp.read()
+                        out_name = f"{_uuid.uuid4()}.wav"
+                        out_path = self.output_dir / out_name
+                        sr = 24000
+                        with open(str(out_path), "wb") as f:
+                            f.write(b"RIFF")
+                            f.write(_struct.pack("<I", 36 + len(pcm)))
+                            f.write(b"WAVEfmt ")
+                            f.write(_struct.pack("<IHHIIHH", 16, 1, 1, sr, sr*2, 2, 16))
+                            f.write(b"data")
+                            f.write(_struct.pack("<I", len(pcm)))
+                            f.write(pcm)
+                        yield {"type": "audio", "index": i, "url": f"/audio/{out_name}", "total": len(sentences)}
+                    except Exception as e:
+                        logger.error(f"nano-qwen3tts stream segment {i} failed: {e}")
+            return
+
+        if self.provider == "qwen3tts":
+            # Qwen3-TTS: use mode-aware preprocessing
+            synth_text, sentences, instruct, tts_lang = await self._prepare_tts_qwen3tts(
+                text, language, emotion
+            )
+            if not sentences:
+                return
+            yield {"type": "ja_text", "data": synth_text}
+            for i, sent in enumerate(sentences):
+                part = await self._qwen3tts_generate_one(
+                    sent, emotion, tts_language=tts_lang, instruct=instruct,
+                )
+                if part:
+                    yield {
+                        "type": "audio",
+                        "index": i,
+                        "url": f"/audio/{part.name}",
+                        "total": len(sentences),
+                    }
+            return
+
+        # Voicebox / other providers
         ja_text, sentences, instruct, profile_id = await self._prepare_tts(
             text, language, emotion
         )
         if not sentences:
             return
-
         yield {"type": "ja_text", "data": ja_text}
+
+        # Voicebox: parallel HTTP generation with ordered yield
+        import httpx
 
         concurrency = getattr(self.config, "voicebox_concurrency", 2)
         semaphore = asyncio.Semaphore(concurrency)
@@ -419,10 +878,8 @@ class TTSEngine:
             finally:
                 events[idx].set()
 
-        # Launch all sentence generations concurrently (semaphore limits parallelism)
         tasks = [asyncio.create_task(gen_one(i, s)) for i, s in enumerate(sentences)]
 
-        # Yield results in order — waits for each sentence's event before yielding
         for i in range(len(sentences)):
             await events[i].wait()
             if results[i]:
@@ -493,6 +950,170 @@ class TTSEngine:
             logger.error(f"Voicebox synthesis failed: {e}")
             result = await self._mock_synthesize(text, language)
             return result[0], result[1], ja_text
+
+    def _get_speaker_language(self) -> str:
+        """Return the language string for the current speaker."""
+        speaker = getattr(self.config, "qwen3tts_speaker", "Ono_Anna")
+        info = self.PRESET_SPEAKERS.get(speaker, {})
+        return info.get("language", "Japanese")
+
+    async def _qwen3tts_generate_one(
+        self, sentence: str, emotion: str = "neutral",
+        tts_language: str = "Japanese", instruct: str = "",
+    ) -> Optional[Path]:
+        """Generate a single sentence via Qwen3-TTS in-process. Returns audio Path or None."""
+        import uuid
+        import numpy as np
+        import soundfile as sf
+
+        try:
+            loop = asyncio.get_event_loop()
+
+            if self._qwen3tts_mode == "custom_voice":
+                # CustomVoice: preset speaker + instruct for emotion
+                speaker = getattr(self.config, "qwen3tts_speaker", "Ono_Anna")
+                wavs, sr = await loop.run_in_executor(
+                    None,
+                    lambda: self._model.generate_custom_voice(
+                        text=sentence,
+                        language=tts_language,
+                        speaker=speaker,
+                        instruct=instruct or "",
+                    ),
+                )
+            else:
+                # VoiceClone: use pre-computed emotion prompt
+                prompt = self._emotion_prompts.get(emotion)
+                if not prompt:
+                    prompt = self._emotion_prompts.get("neutral")
+                if not prompt:
+                    logger.error("No voice clone prompt available")
+                    return None
+                wavs, sr = await loop.run_in_executor(
+                    None,
+                    lambda: self._model.generate_voice_clone(
+                        text=sentence,
+                        language=tts_language,
+                        voice_clone_prompt=prompt,
+                    ),
+                )
+
+            # wavs is a list of tensors/arrays; take the first one
+            wav = wavs[0] if isinstance(wavs, (list, tuple)) else wavs
+            if hasattr(wav, "cpu"):
+                wav = wav.cpu().numpy()
+            wav = np.squeeze(wav)
+
+            out_name = f"{uuid.uuid4()}.wav"
+            out_path = self.output_dir / out_name
+
+            # Prepend ~80ms silence to prevent browser audio clipping
+            pad_samples = int(sr * 0.08)
+            silence = np.zeros(pad_samples, dtype=wav.dtype)
+            wav_padded = np.concatenate([silence, wav])
+
+            sf.write(str(out_path), wav_padded, sr)
+
+            # Apply audio post-processing based on emotion
+            if getattr(self.config, "audio_fx_enabled", True):
+                try:
+                    from audio_fx import process_wav
+                    process_wav(out_path, emotion)
+                except Exception as e:
+                    logger.warning(f"Audio FX failed: {e}")
+
+            return out_path
+
+        except Exception as e:
+            logger.error(f"Qwen3-TTS generation failed: {e}")
+            return None
+
+    async def _prepare_tts_qwen3tts(
+        self, text: str, language: str, emotion: str
+    ) -> tuple[str, list[str], str, str]:
+        """Preprocessing for Qwen3-TTS: decides whether to translate based on speaker language.
+        Returns (synth_text, sentences, instruct, tts_language)."""
+        speaker_lang = self._get_speaker_language() if self._qwen3tts_mode == "custom_voice" else "Japanese"
+
+        if speaker_lang == "Chinese":
+            # Chinese speaker: skip translation, use Chinese instruct
+            instruct = self.get_instruct(emotion, "Chinese")
+            # Still need to clean text
+            import re as _re
+            clean_text = self._strip_emoji(text)
+            if not clean_text:
+                return "", [], "", "Chinese"
+            clean_text = _re.sub(r'```json\s*\{[\s\S]*?\}\s*```', '', clean_text)
+            clean_text = _re.sub(r'```[\s\S]*?```', '', clean_text)
+            clean_text = _re.sub(r'\{["\s]*tool[\s\S]*?\}', '', clean_text)
+            clean_text = clean_text.strip()
+            if not clean_text:
+                return "", [], "", "Chinese"
+            # Clean symbols
+            for ch in "♡♪☆★→←↑↓《》【】「」『』（）()":
+                clean_text = clean_text.replace(ch, "")
+            clean_text = _re.sub(r'[*#_`~|<>{}\\\/\[\]]', '', clean_text)
+            clean_text = _re.sub(r'\s+', ' ', clean_text).strip()
+            logger.info(f"TTS text (zh): {clean_text[:80]}...")
+            # Split on Chinese punctuation
+            raw = _re.split(r'(?<=[。！？])\s*', clean_text)
+            sentences = [s.strip() for s in raw if s.strip() and len(s.strip()) > 1]
+            # Merge short fragments
+            merged = []
+            for s in sentences:
+                if len(s) < 6 and merged:
+                    merged[-1] += s
+                else:
+                    merged.append(s)
+            return clean_text, merged or [clean_text], instruct, "Chinese"
+        else:
+            # Japanese / other: use existing translate pipeline
+            ja_text, sentences, instruct, _ = await self._prepare_tts(text, language, emotion)
+            return ja_text, sentences, instruct, speaker_lang
+
+    async def _synthesize_qwen3tts(
+        self, text: str, language: str = "zh-TW", emotion: str = "neutral"
+    ) -> tuple[str, list[dict], str]:
+        """Synthesize speech using Qwen3-TTS directly (non-streaming path)."""
+        import uuid
+
+        synth_text, sentences, instruct, tts_language = await self._prepare_tts_qwen3tts(
+            text, language, emotion
+        )
+        if not sentences:
+            result = await self._mock_synthesize(text, language)
+            return result[0], result[1], ""
+
+        output_filename = f"{uuid.uuid4()}.wav"
+        output_path = self.output_dir / output_filename
+
+        try:
+            # Generate sentences sequentially (GPU model, parallelism managed by batch)
+            audio_parts = []
+            for sent in sentences:
+                part = await self._qwen3tts_generate_one(
+                    sent, emotion, tts_language=tts_language, instruct=instruct
+                )
+                if part:
+                    audio_parts.append(part)
+
+            if not audio_parts:
+                raise RuntimeError("No audio generated")
+
+            if len(audio_parts) == 1:
+                import shutil
+                shutil.copy2(str(audio_parts[0]), str(output_path))
+            else:
+                self._concat_wav(audio_parts, output_path)
+
+            logger.info(f"Qwen3-TTS synthesized: {output_filename} ({len(sentences)} parts)")
+            visemes = self._generate_visemes_from_audio(str(output_path), synth_text)
+            return output_filename, visemes, synth_text
+
+        except Exception as e:
+            logger.error(f"Qwen3-TTS synthesis failed: {e}")
+            result = await self._mock_synthesize(text, language)
+            return result[0], result[1], synth_text
 
     async def _mock_synthesize(
         self, text: str, language: str = "zh-TW"

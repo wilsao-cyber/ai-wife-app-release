@@ -33,6 +33,30 @@ let ambientGain = null;
 let audioCtx = null;
 let uiSfxBuffers = {};
 let bgmEnabled = localStorage.getItem('ai-wife-bgm') !== 'off';
+
+// Check if audio-assets directory exists (single check, avoids repeated 404s)
+let _audioAssetsAvailable = null; // null = unchecked, true/false = result
+const _audioAvailable = {};
+async function _checkAudioUrl(url) {
+  if (!url) return false;
+  if (url in _audioAvailable) return _audioAvailable[url];
+  // First call: check if /audio-assets/ exists at all
+  if (_audioAssetsAvailable === null) {
+    try {
+      const r = await fetch('/audio-assets/', { method: 'HEAD' });
+      _audioAssetsAvailable = r.ok;
+    } catch { _audioAssetsAvailable = false; }
+  }
+  if (!_audioAssetsAvailable && url.startsWith('/audio-assets/')) {
+    _audioAvailable[url] = false;
+    return false;
+  }
+  try {
+    const r = await fetch(url, { method: 'HEAD' });
+    _audioAvailable[url] = r.ok;
+  } catch { _audioAvailable[url] = false; }
+  return _audioAvailable[url];
+}
 let bgmVolume = parseFloat(localStorage.getItem('ai-wife-bgm-vol') || '0.15');
 let ambientVolume = 0.1;
 let uiSfxEnabled = localStorage.getItem('ai-wife-uisfx') !== 'off';
@@ -56,9 +80,10 @@ function fadeAudio(audio, gainNode, targetVol, duration, onDone) {
   if (onDone) setTimeout(onDone, duration * 1000 + 50);
 }
 
-function playBgm(url, vol) {
+async function playBgm(url, vol) {
   if (!bgmEnabled || !url) return;
   if (currentBgmUrl === url && bgmAudio && !bgmAudio.paused) return;
+  if (!await _checkAudioUrl(url)) return;
   const ctx = ensureAudioCtx();
 
   // Fade out old
@@ -82,9 +107,10 @@ function playBgm(url, vol) {
   audio.play().then(() => fadeAudio(audio, gain, vol || bgmVolume, 1.5)).catch(() => {});
 }
 
-function playAmbient(url) {
+async function playAmbient(url) {
   if (!url) { stopAmbient(); return; }
   if (currentAmbientUrl === url && ambientAudio && !ambientAudio.paused) return;
+  if (!await _checkAudioUrl(url)) return;
   stopAmbient();
   const ctx = ensureAudioCtx();
   const audio = new Audio(url);
@@ -134,6 +160,7 @@ async function preloadUiSfx() {
   const ctx = ensureAudioCtx();
   for (const [key, url] of Object.entries(UI_SFX)) {
     try {
+      if (!await _checkAudioUrl(url)) continue;
       const res = await fetch(url);
       const buf = await res.arrayBuffer();
       uiSfxBuffers[key] = await ctx.decodeAudioData(buf);
@@ -221,7 +248,7 @@ function getLipSyncValues() {
   if (energy < 0.04) return zero;  // silence threshold
 
   // Map bands to mouth shapes (heuristic for Japanese speech)
-  const scale = 1.8;
+  const scale = 0.9;
   return {
     aa: Math.min(1, bandLow * scale * 1.2),           // あ — strong low
     oh: Math.min(1, bandLow * scale * 0.6),            // お — moderate low
